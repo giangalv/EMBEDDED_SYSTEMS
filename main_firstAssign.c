@@ -27,13 +27,17 @@
 #pragma config ICS = ICS_PGD       // Comm Channel Select (Use PGC/EMUC and PGD/EMUD)
 
 #include "xc.h"
+#include <stdio.h>
 
 #define FOSC 7372800.0 //Hz Clock breadboard
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
 #define TIMER1 1
 #define TIMER2 2
+#define TIMER3 3
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
+
+int number_readings = 0; // global variable
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
@@ -59,6 +63,11 @@ void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
         PR2 = clock_steps; 
         T2CONbits.TCKPS = count; // set PRESCALER
     }
+    if (timer == TIMER3){
+        TMR3 = 0.0;
+        PR3 = clock_steps; 
+        T3CONbits.TCKPS = count; // set PRESCALER
+    }
 }
 
 void tmr_wait_period (int timer) {
@@ -77,7 +86,7 @@ void tmr_wait_period (int timer) {
 int print_function(char printed_value[]){
     int number_count = number_readings; // local variable that takes the number of character received until now
     int i = 0;
-     while(1){
+    while(1){
         IFS0bits.T1IF = 0; // Reset the flag
         T1CONbits.TON = 1; // Starts the timer
         tmr_wait_period(TIMER1);
@@ -86,14 +95,40 @@ int print_function(char printed_value[]){
         SPI1BUF = printed_value[i];
         if(printed_value[i]=='\r'||printed_value[i]=='\n'){
             //function to clean the first raw;
+            clean_first_raw();
             //function to write the number on the second raw
             second_raw(number_count);
         }
         
         number_count++;
         i++;
-        int end = sizeof(printed_value[]);
+        int end = 16;
         if (i==end){
+            //clean first raw
+            clean_first_raw();
+        }
+        IFS0bits.T1IF = 0; // Reset the flag
+        T1CONbits.TON = 1; // Starts the timer
+        tmr_wait_period(TIMER1);
+    }
+}
+
+void clean_first_raw(){
+    char cleaning_array[100] = {' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '};
+    int i = 0;
+    while(1){
+        IFS0bits.T1IF = 0; // Reset the flag
+        T1CONbits.TON = 1; // Starts the timer
+        tmr_wait_period(TIMER1);
+        
+        while(SPI1STATbits.SPITBF == 1);
+        SPI1BUF = cleaning_array[i];
+        i++;
+        int end = 16;
+        if (i==end){
+            IFS0bits.T3IF = 0; // Reset the flag
+            T3CONbits.TON = 1; // Starts the timer
+            tmr_wait_period(TIMER3);
             return;
         }
         IFS0bits.T1IF = 0; // Reset the flag
@@ -118,7 +153,7 @@ void second_raw(int number_count){
         i++;
         int end = sizeof(printed_value[]);
         if (i==end){
-            sprintf(str[j],"%d",number_count);
+            sprintf(str[],"%d",number_count);
             print_function(str[]);
             return;
         }
@@ -200,13 +235,13 @@ void UART2_Init() {
     U2STAbits.UTXEN = 1;    // Enable UART transmitter
 }
 
-char UART2_Read() {
-    while (!U2STAbits.URXDA);  // Wait for data to be received
-
-    return U2RXREG;  // Return the received character
+void UART2_Read() {
+    if(U2STAbits.URXDA){
+        SPI1BUF = U2RXREG;
+        return;
+    }
+    // Print the received character
 }
-
-int number_readings = 0; // global variable
 
 int main(void) {
     SPI1CONbits.MSTEN = 1; // master mode
@@ -215,7 +250,8 @@ int main(void) {
     SPI1CONbits.SPRE = 3; // 5:1 secondary prescaler
     SPI1STATbits.SPIEN = 1; // enable SPI
     tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER1 responsible of algorithm)
-    tmr_setup_period(TIMER1, 500); // Set the PR value and the prescaler (TIMER2 for allowing LCD to display values)
+    tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER2 for allowing LCD to display values)
+    tmr_setup_period(TIMER3, 1000);
     
     UART2_Init(); // initialize UART2
     char receivedChar[100];
@@ -224,10 +260,13 @@ int main(void) {
     while(1){
         algorithm();
         // read character from UART2
-        receivedChar = UART2_Read();
-        // display on LCD
-        print_function(receivedChar); // to add Control for first raw fullness 
-        number_readings += sizeof(receivedChar);
+        if(U2STAbits.URXDA){
+            receivedChar = U2RXREG;
+            SPI1BUF = '0x80';
+            print_function(receivedChar);
+            number_readings += sizeof(receivedChar);
+        }
+        
         
     }
     return 0;
