@@ -34,15 +34,13 @@
 #define TIMER1 1
 #define TIMER2 2
 #define TIMER3 3
-
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
-int print_function(char printed_value[]);
-void clean_first_raw();
-void second_raw(int number_count);
-void algorithm();
 
-int number_readings = 0; // global variable
+int number_readings = 0; // global variable for counting all the printed value
+int number_first_raw = 0; // global variable for counting the printed value on the first raw
+char position_first_raw[15] = {'0x80','0x81','0x82','0x83','0x84','0x85','0x86','0x87','0x88','0x89','0x8A','0x8B','0x8C','0x8D','0x8E','0x8F'};
+
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
@@ -87,7 +85,7 @@ void tmr_wait_period (int timer) {
         }
     }
 }
-
+/*
 int print_function(char printed_value[]){
     int number_count = number_readings; // local variable that takes the number of character received until now
     int i = 0;
@@ -167,7 +165,7 @@ void second_raw(int number_count){
         tmr_wait_period(TIMER1);
     }
 }
-
+*/
 void algorithm() {
     IFS0bits.T2IF = 0; // Reset the flag TIMER 2
     T2CONbits.TON = 1; // Starts the timer TIMER 2
@@ -240,12 +238,31 @@ void UART2_Init() {
     U2STAbits.UTXEN = 1;    // Enable UART transmitter
 }
 
-void UART2_Read() {
-    if(U2STAbits.URXDA){
-        SPI1BUF = U2RXREG;
-        return;
+int print_function(char receivedChar){
+    SPI1BUF = position_first_raw[number_first_raw];
+    number_first_raw++;
+    number_readings++;
+    //IFS0bits.T1IF = 0; // Reset the flag
+    //T1CONbits.TON = 1; // Starts the timer
+    //tmr_wait_period(TIMER1);
+
+    while(SPI1STATbits.SPITBF == 1);
+    SPI1BUF = receivedChar;
+    /*
+    if(receivedChar=='\r'||receivedChar=='\n'){
+        //function to clean the first raw;
+        clean_first_raw();
+        //function to write the number on the second raw
+        second_raw(number_count);
+    }*/
+    if(number_first_raw==16){
+        //clean first raw
+        //clean_first_raw();
+        number_first_raw = 0;
     }
-    // Print the received character
+    IFS0bits.T1IF = 0; // Reset the flag
+    T1CONbits.TON = 1; // Starts the timer
+    tmr_wait_period(TIMER1);
 }
 
 int main(void) {
@@ -260,16 +277,13 @@ int main(void) {
     
     UART2_Init(); // initialize UART2
     char receivedChar[100];
-
     
     while(1){
         algorithm();
-        // read character from UART2
+        // if there is, read character from UART2
         if(U2STAbits.URXDA){
             receivedChar = U2RXREG;
-            SPI1BUF = '0x80';
             print_function(receivedChar);
-            number_readings += sizeof(receivedChar);
         }
         
         
