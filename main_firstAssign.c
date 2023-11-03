@@ -34,13 +34,8 @@
 #define TIMER1 1
 #define TIMER2 2
 #define TIMER3 3
-
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
-int print_function(char printed_value[]);
-void clean_first_raw();
-void second_raw(int number_count);
-void algorithm();
 
 int number_readings = 0; // global variable
 
