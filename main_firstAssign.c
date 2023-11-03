@@ -39,7 +39,7 @@ void tmr_wait_period(int timer);
 
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
-char position_first_raw[15] = {'0x80','0x81','0x82','0x83','0x84','0x85','0x86','0x87','0x88','0x89','0x8A','0x8B','0x8C','0x8D','0x8E','0x8F'};
+int position_first_raw[16] = {0x80,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8A,0x8B,0x8C,0x8D,0x8E,0x8F};
 
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
@@ -232,22 +232,27 @@ int main(void) {
 void UART2_Init() {
     U2MODE = 0;             // Clear the mode register
     U2STA = 0;              // Clear the status and control register
-
-    U2BRG = 25;             // Baud Rate Generator value for a specific baud rate (e.g., 9600 bps with a 40 MHz clock)
+    U2BRG = 11;             // Baud Rate Generator value for a specific baud rate (e.g., 9600 bps with a 40 MHz clock)
     U2MODEbits.UARTEN = 1;  // Enable UART
     U2STAbits.UTXEN = 1;    // Enable UART transmitter
 }
 
-int print_function(char receivedChar){
+void print_function(char receivedChar){
     SPI1BUF = position_first_raw[number_first_raw];
     number_first_raw++;
     number_readings++;
-    //IFS0bits.T1IF = 0; // Reset the flag
-    //T1CONbits.TON = 1; // Starts the timer
-    //tmr_wait_period(TIMER1);
-
+    IFS0bits.T1IF = 0; // Reset the flag
+    T1CONbits.TON = 1; // Starts the timer
+    tmr_wait_period(TIMER1);
+    
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = receivedChar;
+    
+    // OVERFLOW UART
+    if (U2STAbits.OERR == 1 && U2STAbits.URXDA == 0){
+        U2STAbits.OERR = 0;
+    }
+        
     /*
     if(receivedChar=='\r'||receivedChar=='\n'){
         //function to clean the first raw;
@@ -272,21 +277,18 @@ int main(void) {
     SPI1CONbits.SPRE = 3; // 5:1 secondary prescaler
     SPI1STATbits.SPIEN = 1; // enable SPI
     tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER1 responsible of algorithm)
-    tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER2 for allowing LCD to display values)
+    tmr_setup_period(TIMER1, 100); // Set the PR value and the prescaler (TIMER2 for allowing LCD to display values)
     tmr_setup_period(TIMER3, 1000);
     
     UART2_Init(); // initialize UART2
-    char receivedChar[100];
+    //char receivedChar[100];
     
     while(1){
         algorithm();
         // if there is, read character from UART2
         if(U2STAbits.URXDA){
-            receivedChar = U2RXREG;
-            print_function(receivedChar);
-        }
-        
-        
+            print_function(U2RXREG);
+        }       
     }
     return 0;
 }
