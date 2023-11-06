@@ -29,14 +29,20 @@
 #include "xc.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define FOSC 7372800.0 //Hz Clock breadboard
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
 #define TIMER1 1
 #define TIMER2 2
 #define TIMER3 3
+
+void UART2_Init();
+void SPI1_Init();
+void algorithm();
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
+void print_function(char receivedChar);
 
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
@@ -230,6 +236,13 @@ int main(void) {
     return 0;
 }
 */
+void SPI1_Init(){
+    SPI1CONbits.MSTEN = 1; // master mode
+    SPI1CONbits.MODE16 = 0; // 8-bit mode
+    SPI1CONbits.PPRE = 3; // 1:1 primary prescaler
+    SPI1CONbits.SPRE = 3; // 5:1 secondary prescaler
+    SPI1STATbits.SPIEN = 1; // enable SPI
+}
 void UART2_Init() {
     U2MODE = 0;             // Clear the mode register
     U2STA = 0;              // Clear the status and control register
@@ -328,17 +341,14 @@ void cb_pop_front(circular_buffer *cb, void *item)
 }
 
 int main(void) {
-    SPI1CONbits.MSTEN = 1; // master mode
-    SPI1CONbits.MODE16 = 0; // 8-bit mode
-    SPI1CONbits.PPRE = 3; // 1:1 primary prescaler
-    SPI1CONbits.SPRE = 3; // 5:1 secondary prescaler
-    SPI1STATbits.SPIEN = 1; // enable SPI
+    SPI1_Init(); // initializd SPI1
+    UART2_Init(); // initialize UART2
+    
     tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER1 responsible of algorithm)
     tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER2 for allowing LCD to display values)
     tmr_setup_period(TIMER3, 1000);
     
-    UART2_Init(); // initialize UART2
-    char receivedChar[100];
+    char receivedChar;
     
     while(1){
         algorithm();
