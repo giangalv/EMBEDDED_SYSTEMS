@@ -48,11 +48,20 @@ void printFunctionFirstRow(char receivedChar);
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
 char position_second_raw[15] = {'0xC0','0xC1','0xC2','0xC3','0xC4','0xC5','0xC6','0xC7','0xC8','0xC9','0xCA','0xCB','0xCC','0xCD','0xCE','0xCF'};
+/*
 int bufferLength = 0; // writeIndex - readIndex
 int readIndex = 0;
 int writeIndex = 0;
 char cb[SIZE_OF_BUFFER]; // size buffer
+*/
+struct circular_buffer {
+    char buffer[SIZE_OF_BUFFER]; // size buffer
+    int bufferLength;        // writeIndex - readIndex
+    int readIndex;
+    int writeIndex;
+};
 
+struct circular_buffer cb;
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
@@ -279,6 +288,12 @@ void initFunctionSecondRaw(){
         i++;
     }
 }
+void initBuffer(){
+    cb.bufferLength = 0; // writeIndex - readIndex
+    cb.readIndex = 0;
+    cb.writeIndex = 0;
+}
+
 void second_raw(){
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
@@ -308,35 +323,35 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
 }
 
 void push(char receivedChar){
-    if (bufferLength == SIZE_OF_BUFFER)
+    if (cb.bufferLength == SIZE_OF_BUFFER)
     {
         //printf(?Buffer is full!?);
     }
     else{
-        cb[writeIndex] = receivedChar;
-        bufferLength++;
-        writeIndex++;
-        if (writeIndex == SIZE_OF_BUFFER) 
+        cb.buffer[cb.writeIndex] = receivedChar;
+        cb.bufferLength++;
+        cb.writeIndex++;
+        if (cb.writeIndex == SIZE_OF_BUFFER) 
         {
-            writeIndex = 0;
+            cb.writeIndex = 0;
         }
     }
 }
 
 char pull(){
     char empty = ' ';
-    if (bufferLength == 0) 
+    if (cb.bufferLength == 0) 
     {
         //printf(?Buffer is empty!?);
         return empty;
     }
     else{
-        char receivedChar = cb[readIndex];
-        bufferLength--;
-        readIndex++;
-        if (readIndex == SIZE_OF_BUFFER) 
+        char receivedChar = cb.buffer[cb.readIndex];
+        cb.bufferLength--;
+        cb.readIndex++;
+        if (cb.readIndex == SIZE_OF_BUFFER) 
         {
-            readIndex = 0;
+            cb.readIndex = 0;
         }
         return receivedChar;
     }
@@ -351,7 +366,9 @@ int main(void) {
        
     tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER1 for allowing LCD to display values)
     tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER2 responsible of algorithm)
-    tmr_setup_period(TIMER3, 3000); 
+    tmr_setup_period(TIMER3, 3000);
+    
+    initBuffer();
     
     char receivedChar;
     // STARTING THE LCD
@@ -363,7 +380,7 @@ int main(void) {
     while(1){
         algorithm();
         
-        if(bufferLength > 0){
+        if(cb.bufferLength > 0){
             receivedChar = pull();
             printFunctionFirstRow(receivedChar);
         }
