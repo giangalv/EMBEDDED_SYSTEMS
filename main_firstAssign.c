@@ -246,7 +246,8 @@ void SPI1_Init(){
 void UART2_Init() {
     U2MODE = 0;             // Clear the mode register
     U2STA = 0;              // Clear the status and control register
-    U2BRG = 11;             // Baud Rate Generator value for a specific baud rate (e.g., 9600 bps with a 40 MHz clock)
+    U2BRG = 11;             // Baud Rate Generator value for a specific baud rate 
+    // (e.g., 9600 bps with a 7.3728 MHz clock, Fcy = 1.8432 MHz) || (7372800 / 4) / (16 * 9600) - 1
     U2MODEbits.UARTEN = 1;  // Enable UART
     U2STAbits.UTXEN = 1;    // Enable UART transmitter
 }
@@ -255,9 +256,6 @@ void print_function(char receivedChar){
     SPI1BUF = position_first_raw[number_first_raw];
     number_first_raw++;
     number_readings++;
-    //IFS0bits.T1IF = 0; // Reset the flag
-    //T1CONbits.TON = 1; // Starts the timer
-    //tmr_wait_period(TIMER1);
 
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = receivedChar;
@@ -284,6 +282,23 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
     
     // Manage the losing bytes 
     
+}
+
+void UART2_EnableRxInterrupt() {
+    IEC0bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2.
+   
+    // Abilita l'interrupt globale.
+    __builtin_enable_interrupts();
+}
+
+void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
+    // Leggi i dati dal buffer di ricezione e gestiscili.
+    char receivedData = U2RXREG;
+
+    // Fai qualcosa con i dati ricevuti, ad esempio, memorizzali o elaborali.
+
+    // Pulisci il flag dell'interrupt.
+    IFS0bits.U2RXIF = 0;
 }
 
 typedef struct circular_buffer
@@ -316,7 +331,7 @@ void cb_free(circular_buffer *cb)
     // clear out other fields too, just to be safe
 }
 
-void cb_push_back(circular_buffer *cb, const void *item)
+void cb_push_back(circular_buffer *cb, const void *item) // read function
 {
     if(cb->count == cb->capacity){
         // handle error
@@ -328,7 +343,7 @@ void cb_push_back(circular_buffer *cb, const void *item)
     cb->count++;
 }
 
-void cb_pop_front(circular_buffer *cb, void *item)
+void cb_pop_front(circular_buffer *cb, void *item) // write function
 {
     if(cb->count == 0){
         // handle error
@@ -343,21 +358,23 @@ void cb_pop_front(circular_buffer *cb, void *item)
 int main(void) {
     SPI1_Init(); // initializd SPI1
     UART2_Init(); // initialize UART2
-    
+        
     tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER1 responsible of algorithm)
     tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER2 for allowing LCD to display values)
     tmr_setup_period(TIMER3, 1000);
-    
+
     char receivedChar;
     
     while(1){
         algorithm();
+        
         // if there is, read character from UART2
         if(U2STAbits.URXDA){
             receivedChar = U2RXREG;
             print_function(receivedChar);
         }
+        
+        tmr_wait_period(TIMER1); 
     }
-    return 0;
 }
 
