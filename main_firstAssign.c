@@ -36,6 +36,7 @@
 #define TIMER1 1
 #define TIMER2 2
 #define TIMER3 3
+#define SIZE_OF_BUFFER 10
 
 void UART2_Init();
 void SPI1_Init();
@@ -47,6 +48,9 @@ void printFunctionFirstRow(char receivedChar);
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
 char position_first_raw[15] = {'0x80','0x81','0x82','0x83','0x84','0x85','0x86','0x87','0x88','0x89','0x8A','0x8B','0x8C','0x8D','0x8E','0x8F'};
+int bufferLength = 0; // writeIndex - readIndex
+int readIndex = 0;
+int writeIndex = 0;
 
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
@@ -290,20 +294,19 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
     // Manage the losing bytes 
     
 }
-*/
 
-typedef struct circular_buffer
+
+typedef struct circular_buffer //bufferLenght, readIndex, writeIndex
 {
     void *buffer;     // data buffer
     void *buffer_end; // end of data buffer
     size_t capacity;  // maximum number of items in the buffer
     size_t count;     // number of items in the buffer
-    size_t sz;        // size of each item in the buffer
     void *head;       // pointer to head
     void *tail;       // pointer to tail
-} circular_buffer;
+} circular_buffer;*/
 
-circular_buffer cb;
+char cb[10];
 
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
     // Pulisci il flag dell'interrupt.
@@ -312,15 +315,10 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
     if(U2STAbits.URXDA == 1){
         // Leggi il dato dal registro di ricezione UART2.
         char receivedData = U2RXREG;
-        if(cb.count == cb.capacity){
-            
-        }
-        else{
-            cb_push_back(cb, receivedData);
-        }
+        push(receivedData);
     }
 }
-
+/*
 void cb_init(circular_buffer *cb, size_t capacity, size_t sz)
 {
     cb->buffer = malloc(capacity * sz);
@@ -329,7 +327,6 @@ void cb_init(circular_buffer *cb, size_t capacity, size_t sz)
     cb->buffer_end = (char *)cb->buffer + capacity * sz;
     cb->capacity = capacity;
     cb->count = 0;
-    cb->sz = sz;
     cb->head = cb->buffer;
     cb->tail = cb->buffer;
 }
@@ -365,6 +362,42 @@ void cb_pop_front(circular_buffer *cb) // write function
     cb->count--;
     printFunctionFirstRow(item);
 }
+*/
+void push(char receivedChar){
+    if (bufferLength == SIZE_OF_BUFFER)
+    {
+        //printf(“Buffer is full!”);
+    }
+    else{
+        cb[writeIndex] = receivedChar;
+        bufferLength++;
+        writeIndex++;
+        if (writeIndex == SIZE_OF_BUFFER) 
+        {
+            writeIndex = 0;
+        }
+    }
+}
+
+char pull(){
+    char empty = ' ';
+    if (bufferLength == 0) 
+    {
+        //printf(“Buffer is empty!”);
+        return empty;
+    }
+    else{
+        char receivedChar = cb[readIndex];
+        bufferLength--;
+        readIndex++;
+        if (readIndex == SIZE_OF_BUFFER) 
+        {
+            readIndex = 0;
+        }
+        return receivedChar;
+    }
+}
+
 
 int main(void) {
     IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
@@ -377,9 +410,9 @@ int main(void) {
     tmr_setup_period(TIMER3, 1000);
     
     // initialize the circular buffer
-    size_t capacity = 10;
-    size_t item_size = sizeof(char);
-    cb_init(&cb, capacity, item_size);    
+    //size_t capacity = 10;
+    //size_t item_size = sizeof(char);
+    //cb_init(&cb, capacity, item_size);    
     
     char receivedChar;
     
@@ -387,8 +420,13 @@ int main(void) {
     
     while(1){
         algorithm();
+        
+        if(bufferLength > 0){
+            receivedChar = pull();
+            printFunctionFirstRow(receivedChar);
+        }
 
-        // if there is, read character from UART2
+        /* if there is, read character from UART2
         if(U2STAbits.URXDA){
             receivedChar = U2RXREG;
             printFunctionFirstRow(receivedChar);
@@ -396,6 +434,7 @@ int main(void) {
         else{
             //cb_pop_front(&cb);
         }
+        */
         IFS0bits.T1IF = 0; // Reset the flag
         T1CONbits.TON = 1; // Starts the timer
         tmr_wait_period(TIMER1); 
