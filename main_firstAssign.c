@@ -198,64 +198,7 @@ void algorithm() {
     T2CONbits.TON = 1; // Starts the timer TIMER 2
     tmr_wait_period(TIMER2);
 }
-/*
-int main(void) {
-    SPI1CONbits.MSTEN = 1;
-    SPI1CONbits.MODE16 = 0;
-    SPI1CONbits.PPRE = 3;
-    SPI1CONbits.SPRE = 3;
-    SPI1STATbits.SPIEN = 1;
-    
-    tmr_setup_period(TIMER1, 500); // Set the PR value and the prescaler
-   
-    // Set a timer to expire ewvery second; write the seconds elapsed on
-    // the LCD (use sprintf(buffer, ?%d?, value) to convert an integer to
-    // a string to be displayed
-    char str[1000];
-    int count = 0;
-    while(1){
-        int digitsnumber = log10(count)+1;
-        // create the vector to print the number
-        for(int j=0; j<(digitsnumber+1); j++){
-            int num = count;  
-            num = '0' + (count % 10); // take out the last digit and convert it into a char
-            sprintf(str[j],"%d",num);
-            num /= 10; // remove the last digit    
-        }
-        print_function(str[]);
-        
-        // create the vector to clear the LCD
-        for(int j=0; j<(digitsnumber+1); j++){
-            str[j] = '';   
-        }
-        print_function(str[]);   
-        
-        //increase the number 
-        count ++;
-    }
-    
-    // Write ?HELLO WORLD? on the LCD display 
-    char printed_value[11] = {'H','e', 'l', 'l' ,'o', ' ', 'w', 'o', 'r', 'l', 'd'};
-    int i = 0;
-    while(1){
-        IFS0bits.T1IF = 0; // Reset the flag
-        T1CONbits.TON = 1; // Starts the timer
-        tmr_wait_period(TIMER1);
-        
-        while(SPI1STATbits.SPITBF == 1);
-        SPI1BUF = printed_value[i];
-        
-        i++;
-        if (i==11){
-             i=0;
-        }
-        IFS0bits.T1IF = 0; // Reset the flag
-        T1CONbits.TON = 1; // Starts the timer
-        tmr_wait_period(TIMER1);
-    }
-    return 0;
-}
-*/
+
 void SPI1_Init(){
     SPI1CONbits.MSTEN = 1; // master mode
     SPI1CONbits.MODE16 = 0; // 8-bit mode
@@ -263,6 +206,7 @@ void SPI1_Init(){
     SPI1CONbits.SPRE = 3; // 5:1 secondary prescaler
     SPI1STATbits.SPIEN = 1; // enable SPI
 }
+
 void UART2_Init() {
     U2MODE = 0;             // Clear the mode register
     U2STA = 0;              // Clear the status and control register
@@ -307,6 +251,7 @@ void printFunctionFirstRow(char receivedChar){
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = receivedChar;
     number_first_raw++;
+    number_readings++;
     /*
     if(receivedChar=='\r'||receivedChar=='\n'){
         //function to clean the first raw;
@@ -350,7 +295,6 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
     
 }
 */
-
 
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
     // Pulisci il flag dell'interrupt.
@@ -407,7 +351,7 @@ int main(void) {
        
     tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER1 for allowing LCD to display values)
     tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER2 responsible of algorithm)
-    tmr_setup_period(TIMER3, 5000); 
+    tmr_setup_period(TIMER3, 3000); 
     
     char receivedChar;
     // STARTING THE LCD
