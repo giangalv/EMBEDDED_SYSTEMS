@@ -36,7 +36,7 @@
 #define TIMER1 1
 #define TIMER2 2
 #define TIMER3 3
-#define SIZE_OF_BUFFER 10
+#define SIZE_OF_BUFFER 25
 
 void UART2_Init();
 void SPI1_Init();
@@ -47,10 +47,11 @@ void printFunctionFirstRow(char receivedChar);
 
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
-char position_first_raw[15] = {'0x80','0x81','0x82','0x83','0x84','0x85','0x86','0x87','0x88','0x89','0x8A','0x8B','0x8C','0x8D','0x8E','0x8F'};
+char position_second_raw[15] = {'0xC0','0xC1','0xC2','0xC3','0xC4','0xC5','0xC6','0xC7','0xC8','0xC9','0xCA','0xCB','0xCC','0xCD','0xCE','0xCF'};
 int bufferLength = 0; // writeIndex - readIndex
 int readIndex = 0;
 int writeIndex = 0;
+char cb[SIZE_OF_BUFFER]; // size buffer
 
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
@@ -95,7 +96,22 @@ void tmr_wait_period (int timer) {
             // Wait until the flag is high -> The timer finished to count
         }
     }
+    else if(timer == TIMER3){
+        while(IFS0bits.T3IF == 0){
+            // Wait until the flag is high -> The timer finished to count
+        }
+    }
 }
+
+void tmr_wait_ms(int timer, int ms){
+    tmr_setup_period(timer, ms);
+    if (timer == TIMER3){
+        IFS0bits.T3IF = 0; // Reset the flag
+        T3CONbits.TON = 1; // Starts the timer
+    }
+    tmr_wait_period(timer);
+}
+
 /*
 int print_function(char printed_value[]){
     int number_count = number_readings; // local variable that takes the number of character received until now
@@ -261,6 +277,30 @@ void setCursorPositionFirstROw() {
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = 0x80;
+    IFS0bits.T1IF = 0; // Reset the flag
+    T1CONbits.TON = 1; // Starts the timer    
+    tmr_wait_ms(TIMER3,1); // wait 1ms after moving the cursor
+}
+
+// Function to set the cursor position
+void setCursorPositionSecondROw() {
+    // Send a control command to set the cursor position
+    while(SPI1STATbits.SPITBF == 1);
+    SPI1BUF = 0xC0;
+    IFS0bits.T1IF = 0; // Reset the flag
+    T1CONbits.TON = 1; // Starts the timer
+    tmr_wait_ms(TIMER3,1); // wait 1ms after moving the cursor
+}
+
+void cleaningFirstRow(){
+    char cleaner = ' ';
+    setCursorPositionFirstROw();
+    int i = 0;
+    while(i<16){
+        while(SPI1STATbits.SPITBF == 1);
+        SPI1BUF = cleaner;
+        i++;
+    }
 }
 
 void printFunctionFirstRow(char receivedChar){
@@ -276,14 +316,29 @@ void printFunctionFirstRow(char receivedChar){
     }*/
     if(number_first_raw==16){
         //clean first raw
-        //clean_first_raw();
+        cleaningFirstRow();
         number_first_raw = 0;
         setCursorPositionFirstROw();
         // setCursorPosition(0xC0); // move at the beginning of the second row
     }
-    IFS0bits.T1IF = 0; // Reset the flag
-    T1CONbits.TON = 1; // Starts the timer
-    tmr_wait_period(TIMER1);
+}
+
+void initFunctionSecondRaw(){
+    // Send a control command to set the cursor position
+    setCursorPositionSecondROw();
+    char initSecondRaw[11] = {'C','h', 'a', 'r' ,' ', 'R', 'e', 'c', 'v', ':', ' '}; //scrivo dal c10 o c11
+    int i = 0;
+    while(i<11){
+        while(SPI1STATbits.SPITBF == 1);
+        SPI1BUF = initSecondRaw[i];
+        i++;
+    }
+}
+void second_raw(){
+    // Send a control command to set the cursor position
+    while(SPI1STATbits.SPITBF == 1);
+    SPI1BUF = '0xC10';
+    //
 }
 
 /*
@@ -294,19 +349,8 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
     // Manage the losing bytes 
     
 }
+*/
 
-
-typedef struct circular_buffer //bufferLenght, readIndex, writeIndex
-{
-    void *buffer;     // data buffer
-    void *buffer_end; // end of data buffer
-    size_t capacity;  // maximum number of items in the buffer
-    size_t count;     // number of items in the buffer
-    void *head;       // pointer to head
-    void *tail;       // pointer to tail
-} circular_buffer;*/
-
-char cb[10];
 
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
     // Pulisci il flag dell'interrupt.
@@ -318,55 +362,11 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
         push(receivedData);
     }
 }
-/*
-void cb_init(circular_buffer *cb, size_t capacity, size_t sz)
-{
-    cb->buffer = malloc(capacity * sz);
-    if(cb->buffer == NULL)
-        // handle error
-    cb->buffer_end = (char *)cb->buffer + capacity * sz;
-    cb->capacity = capacity;
-    cb->count = 0;
-    cb->head = cb->buffer;
-    cb->tail = cb->buffer;
-}
 
-void cb_free(circular_buffer *cb)
-{
-    free(cb->buffer);
-    // clear out other fields too, just to be safe
-}
-
-void cb_push_back(circular_buffer *cb, const void *item) // read function
-{
-    if(cb->count == cb->capacity){
-        // handle error
-    }
-    memcpy(cb->head, item, cb->sz);
-    cb->head = (char*)cb->head + cb->sz;
-    if(cb->head == cb->buffer_end)
-        cb->head = cb->buffer;
-    cb->count++;
-}
-
-void cb_pop_front(circular_buffer *cb) // write function
-{
-    if(cb->count == 0){
-        return;
-    }
-    char item;
-    memcpy(item, cb->tail, cb->sz);
-    cb->tail = (char*)cb->tail + cb->sz;
-    if(cb->tail == cb->buffer_end)
-        cb->tail = cb->buffer;
-    cb->count--;
-    printFunctionFirstRow(item);
-}
-*/
 void push(char receivedChar){
     if (bufferLength == SIZE_OF_BUFFER)
     {
-        //printf(“Buffer is full!”);
+        //printf(?Buffer is full!?);
     }
     else{
         cb[writeIndex] = receivedChar;
@@ -383,7 +383,7 @@ char pull(){
     char empty = ' ';
     if (bufferLength == 0) 
     {
-        //printf(“Buffer is empty!”);
+        //printf(?Buffer is empty!?);
         return empty;
     }
     else{
@@ -407,17 +407,15 @@ int main(void) {
        
     tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER1 for allowing LCD to display values)
     tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER2 responsible of algorithm)
-    tmr_setup_period(TIMER3, 1000);
-    
-    // initialize the circular buffer
-    //size_t capacity = 10;
-    //size_t item_size = sizeof(char);
-    //cb_init(&cb, capacity, item_size);    
+    tmr_setup_period(TIMER3, 5000); 
     
     char receivedChar;
-    
+    // STARTING THE LCD
+    IFS0bits.T3IF = 0; // Reset the flag
+    T3CONbits.TON = 1; // Starts the timer
+    tmr_wait_period(TIMER3); 
+    initFunctionSecondRaw();
     setCursorPositionFirstROw();
-    
     while(1){
         algorithm();
         
@@ -426,15 +424,6 @@ int main(void) {
             printFunctionFirstRow(receivedChar);
         }
 
-        /* if there is, read character from UART2
-        if(U2STAbits.URXDA){
-            receivedChar = U2RXREG;
-            printFunctionFirstRow(receivedChar);
-        }
-        else{
-            //cb_pop_front(&cb);
-        }
-        */
         IFS0bits.T1IF = 0; // Reset the flag
         T1CONbits.TON = 1; // Starts the timer
         tmr_wait_period(TIMER1); 
