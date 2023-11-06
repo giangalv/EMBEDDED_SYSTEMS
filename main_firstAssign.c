@@ -42,7 +42,7 @@ void SPI1_Init();
 void algorithm();
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
-void print_function(char receivedChar);
+void printFunctionFirstRow(char receivedChar);
 
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
@@ -252,17 +252,17 @@ void UART2_Init() {
     U2STAbits.UTXEN = 1;    // Enable UART transmitter
 }
 
-void print_function(char receivedChar){
-    SPI1BUF = position_first_raw[number_first_raw];
-    number_first_raw++;
-    number_readings++;
-       
-    IFS0bits.T1IF = 0; // Reset the flag
-    T1CONbits.TON = 1; // Starts the timer
-    tmr_wait_period(TIMER1);
-    
+// Function to set the cursor position
+void setCursorPositionFirstROw() {
+    // Send a control command to set the cursor position
+    while(SPI1STATbits.SPITBF == 1);
+    SPI1BUF = 0x80;
+}
+
+void printFunctionFirstRow(char receivedChar){
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = receivedChar;
+    number_first_raw++;
     /*
     if(receivedChar=='\r'||receivedChar=='\n'){
         //function to clean the first raw;
@@ -274,12 +274,15 @@ void print_function(char receivedChar){
         //clean first raw
         //clean_first_raw();
         number_first_raw = 0;
+        setCursorPositionFirstROw();
+        // setCursorPosition(0xC0); // move at the beginning of the second row
     }
     IFS0bits.T1IF = 0; // Reset the flag
     T1CONbits.TON = 1; // Starts the timer
     tmr_wait_period(TIMER1);
 }
 
+/*
 void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
     (){
     IFS0bits.INT0IF = 0; // reset interrupt flag
@@ -287,6 +290,7 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
     // Manage the losing bytes 
     
 }
+*/
 
 typedef struct circular_buffer
 {
@@ -301,22 +305,20 @@ typedef struct circular_buffer
 
 circular_buffer cb;
 
-void UART2_EnableRxInterrupt() {
-    IEC0bits.U1RXIE = 1; // Abilita l'interrupt per la ricezione UART2.
-    
-    // Abilita l'interrupt globale.
-    __builtin_enable_interrupts();   
-}
-
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
-    // Leggi il dato dal registro di ricezione UART2.
-    char receivedData = U2RXREG;
-
-    // Scrivi il dato nel buffer circolare.
-    cb_push_back(&cb, &receivedData);
-
     // Pulisci il flag dell'interrupt.
-    IFS0bits.U1RXIF = 0;
+    IFS1bits.U2RXIF = 0;
+    
+    if(U2STAbits.URXDA == 1){
+        // Leggi il dato dal registro di ricezione UART2.
+        char receivedData = U2RXREG;
+        if(cb.count == cb.capacity){
+            
+        }
+        else{
+            cb_push_back(cb, receivedData);
+        }
+    }
 }
 
 void cb_init(circular_buffer *cb, size_t capacity, size_t sz)
@@ -350,20 +352,23 @@ void cb_push_back(circular_buffer *cb, const void *item) // read function
     cb->count++;
 }
 
-int cb_pop_front(circular_buffer *cb, void *item) // write function
+void cb_pop_front(circular_buffer *cb) // write function
 {
     if(cb->count == 0){
-        return -1;
+        return;
     }
+    char item;
     memcpy(item, cb->tail, cb->sz);
     cb->tail = (char*)cb->tail + cb->sz;
     if(cb->tail == cb->buffer_end)
         cb->tail = cb->buffer;
     cb->count--;
-    return 0;
+    printFunctionFirstRow(item);
 }
 
 int main(void) {
+    IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
+    U2STAbits.URXISEL = 3; // Set URXISEL to 11
     SPI1_Init(); // initializd SPI1
     UART2_Init(); // initialize UART2
        
@@ -374,9 +379,11 @@ int main(void) {
     // initialize the circular buffer
     size_t capacity = 10;
     size_t item_size = sizeof(char);
-    cb_init(&cb, capacity, item_size); 
-       
+    cb_init(&cb, capacity, item_size);    
+    
     char receivedChar;
+    
+    setCursorPositionFirstROw();
     
     while(1){
         algorithm();
@@ -384,13 +391,11 @@ int main(void) {
         // if there is, read character from UART2
         if(U2STAbits.URXDA){
             receivedChar = U2RXREG;
-            print_function(receivedChar);
+            printFunctionFirstRow(receivedChar);
         }
-        //else{
-            //if(cb_pop_front(&cb, &receivedChar) == 0){
-            //    print_function(receivedChar);
-         //   }
-        //}
+        else{
+            //cb_pop_front(&cb);
+        }
         IFS0bits.T1IF = 0; // Reset the flag
         T1CONbits.TON = 1; // Starts the timer
         tmr_wait_period(TIMER1); 
