@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define FOSC 7372800.0 //Hz Clock breadboard
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
@@ -288,6 +289,50 @@ void initFunctionSecondRaw(){
         i++;
     }
 }
+
+void print_function(char printed_value[]){
+    // Send a control command to set the cursor position
+    while(SPI1STATbits.SPITBF == 1);
+    SPI1BUF = 0xCA;
+    IFS0bits.T1IF = 0; // Reset the flag
+    T1CONbits.TON = 1; // Starts the timer
+    tmr_wait_ms(TIMER3,1); // wait 1ms after moving the cursor
+    
+    int i = 0;
+     while(1){       
+        while(SPI1STATbits.SPITBF == 1);
+        SPI1BUF = printed_value[i];
+        i++;
+        int end = sizeof(printed_value);
+        if (i==end){
+            return;
+        }
+    }
+}
+
+void convertNumberToString(int count){
+    char str[1000];
+    int digitsnumber = log10(count)+1;
+    // create the vector to print the number
+    for(int j=0; j<(digitsnumber+1); j++){
+        int num = count;  
+        num = '0' + (count % 10); // take out the last digit and convert it into a char
+        sprintf(str[j],"%d",num);
+        num /= 10; // remove the last digit    
+    }
+    print_function(str);     
+}
+
+void cleanSecondRow(int count){
+    char str[1000];
+    int digitsnumber = log10(count)+1;
+    // create the vector to clear the LCD
+    for(int j=0; j<(digitsnumber+1); j++){
+        str[j] = ' ';   
+    }
+    print_function(str); 
+}
+
 void initBuffer(){
     cb.bufferLength = 0; // writeIndex - readIndex
     cb.readIndex = 0;
@@ -376,6 +421,7 @@ int main(void) {
     T3CONbits.TON = 1; // Starts the timer
     tmr_wait_period(TIMER3); 
     initFunctionSecondRaw();
+    convertNumberToString(number_readings); // DA FARE
     setCursorPositionFirstROw();
     while(1){
         algorithm();
