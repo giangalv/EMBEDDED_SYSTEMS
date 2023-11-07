@@ -113,87 +113,6 @@ void tmr_wait_ms(int timer, int ms){
     tmr_wait_period(timer);
 }
 
-/*
-int print_function(char printed_value[]){
-    int number_count = number_readings; // local variable that takes the number of character received until now
-    int i = 0;
-    while(1){
-        IFS0bits.T1IF = 0; // Reset the flag
-        T1CONbits.TON = 1; // Starts the timer
-        tmr_wait_period(TIMER1);
-        
-        while(SPI1STATbits.SPITBF == 1);
-        SPI1BUF = printed_value[i];
-        if(printed_value[i]=='\r'||printed_value[i]=='\n'){
-            //function to clean the first raw;
-            clean_first_raw();
-            //function to write the number on the second raw
-            second_raw(number_count);
-        }
-        
-        number_count++;
-        i++;
-        int end = 16;
-        if (i==end){
-            //clean first raw
-            clean_first_raw();
-        }
-        IFS0bits.T1IF = 0; // Reset the flag
-        T1CONbits.TON = 1; // Starts the timer
-        tmr_wait_period(TIMER1);
-    }
-}
-
-void clean_first_raw(){
-    char cleaning_array[100] = {' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '};
-    int i = 0;
-    while(1){
-        IFS0bits.T1IF = 0; // Reset the flag
-        T1CONbits.TON = 1; // Starts the timer
-        tmr_wait_period(TIMER1);
-        
-        while(SPI1STATbits.SPITBF == 1);
-        SPI1BUF = cleaning_array[i];
-        i++;
-        int end = 16;
-        if (i==end){
-            IFS0bits.T3IF = 0; // Reset the flag
-            T3CONbits.TON = 1; // Starts the timer
-            tmr_wait_period(TIMER3);
-            return;
-        }
-        IFS0bits.T1IF = 0; // Reset the flag
-        T1CONbits.TON = 1; // Starts the timer
-        tmr_wait_period(TIMER1);
-    }
-}
-
-void second_raw(int number_count){
-    SPI1BUF = '0xC0';
-    int i = 0;
-    char str[1000];
-     while(1){
-        IFS0bits.T1IF = 0; // Reset the flag
-        T1CONbits.TON = 1; // Starts the timer
-        tmr_wait_period(TIMER1);
-        
-        char printed_value[11] = {'C','h', 'a', 'r' ,' ', 'R', 'e', 'c', 'v', ':'};
-        while(SPI1STATbits.SPITBF == 1);
-        SPI1BUF = printed_value[i];
-        
-        i++;
-        int end = sizeof(printed_value[]);
-        if (i==end){
-            sprintf(str[],"%d",number_count);
-            print_function(str[]);
-            return;
-        }
-        IFS0bits.T1IF = 0; // Reset the flag
-        T1CONbits.TON = 1; // Starts the timer
-        tmr_wait_period(TIMER1);
-    }
-}
-*/
 void algorithm() {
     IFS0bits.T2IF = 0; // Reset the flag TIMER 2
     T2CONbits.TON = 1; // Starts the timer TIMER 2
@@ -263,16 +182,16 @@ void printFunctionFirstRow(char receivedChar){
     SPI1BUF = receivedChar;
     number_first_raw++;
     number_readings++;
-    /*
-    if(receivedChar=='\r'||receivedChar=='\n'){
-        //function to clean the first raw;
-        clean_first_raw();
-        //function to write the number on the second raw
-        second_raw(number_count);
-    }*/
     
     convertNumberToString(number_readings);
     setCursorPositionFirstROw(position_first_raw[number_first_raw]);
+    
+    if(receivedChar=='\r'||receivedChar=='\n'){
+        //function to clean the first raw;
+        cleaningFirstRow();
+        number_first_raw = 0;
+        setCursorPositionFirstROw(0x80);   
+    }  
     
     if(number_first_raw==16){
         //clean first raw
@@ -280,8 +199,7 @@ void printFunctionFirstRow(char receivedChar){
         number_first_raw = 0;
         setCursorPositionFirstROw(0x80);
         // setCursorPosition(0xC0); // move at the beginning of the second row
-    }
-    // aggiorna la seconda riga   
+    } 
 }
 
 void print_function(char printed_value[]){
