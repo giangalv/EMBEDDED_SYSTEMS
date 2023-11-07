@@ -37,7 +37,7 @@
 #define TIMER1 1
 #define TIMER2 2
 #define TIMER3 3
-#define SIZE_OF_BUFFER 25
+#define SIZE_OF_BUFFER 64
 
 void UART2_Init();
 void SPI1_Init();
@@ -48,7 +48,7 @@ void printFunctionFirstRow(char receivedChar);
 
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
-char position_second_raw[15] = {'0xC0','0xC1','0xC2','0xC3','0xC4','0xC5','0xC6','0xC7','0xC8','0xC9','0xCA','0xCB','0xCC','0xCD','0xCE','0xCF'};
+int position_first_raw[16] = {0x80,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8A,0x8B,0x8C,0x8D,0x8E,0x8F};
 /*
 int bufferLength = 0; // writeIndex - readIndex
 int readIndex = 0;
@@ -229,10 +229,10 @@ void initFunctionSecondRaw(){
 }
 
 // SETTING CURSOR FUNCTIONS
-void setCursorPositionFirstROw() {
+void setCursorPositionFirstROw(int position) {
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
-    SPI1BUF = 0x80;
+    SPI1BUF = position;
     IFS0bits.T1IF = 0; // Reset the flag
     T1CONbits.TON = 1; // Starts the timer    
     tmr_wait_ms(TIMER3,1); // wait 1ms after moving the cursor
@@ -249,7 +249,7 @@ void setCursorPositionSecondROw() {
 // PRINTING/CLEANING FUNCTIONS
 void cleaningFirstRow(){
     char cleaner = ' ';
-    setCursorPositionFirstROw();
+    setCursorPositionFirstROw(0x80);
     int i = 0;
     while(i<16){
         while(SPI1STATbits.SPITBF == 1);
@@ -257,6 +257,7 @@ void cleaningFirstRow(){
         i++;
     }
 }
+
 void printFunctionFirstRow(char receivedChar){
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = receivedChar;
@@ -269,14 +270,20 @@ void printFunctionFirstRow(char receivedChar){
         //function to write the number on the second raw
         second_raw(number_count);
     }*/
+    
+    convertNumberToString(number_readings);
+    setCursorPositionFirstROw(position_first_raw[number_first_raw]);
+    
     if(number_first_raw==16){
         //clean first raw
         cleaningFirstRow();
         number_first_raw = 0;
-        setCursorPositionFirstROw();
+        setCursorPositionFirstROw(0x80);
         // setCursorPosition(0xC0); // move at the beginning of the second row
     }
+    // aggiorna la seconda riga   
 }
+
 void print_function(char printed_value[]){
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
@@ -288,44 +295,21 @@ void print_function(char printed_value[]){
     int i = 0;
      while(1){       
         while(SPI1STATbits.SPITBF == 1);
-        SPI1BUF = printed_value[i];
-        i++;
+        SPI1BUF = printed_value[i];        
         int end = sizeof(printed_value);
         if (i==end){
             return;
         }
+        i++;
     }
-}
-void cleanSecondRow(int count){
-    char str[1000];
-    int digitsnumber = log10(count)+1;
-    // create the vector to clear the LCD
-    for(int j=0; j<(digitsnumber+1); j++){
-        str[j] = ' ';   
-    }
-    print_function(str); 
-}
-void second_raw(){
-    // Send a control command to set the cursor position
-    while(SPI1STATbits.SPITBF == 1);
-    SPI1BUF = '0xC10';
-    //
 }
 
-void convertNumberToString(int *count){
-    /*
-    char str[1000];
-    int digitsnumber = log10(count)+1;
-    // create the vector to print the number
-    for(int j=0; j<(digitsnumber+1); j++){
-        int num = count;  
-        num = '0' + (count % 10); // take out the last digit and convert it into a char
-        sprintf(str[j],"%d",num);
-        num /= 10; // remove the last digit    
-    }
-    print_function(str);*/
-    
-    char str[1000];
+void convertNumberToString(int count){ 
+    // clean
+    char clr[10] = {' ', ' ', ' '};
+    print_function(clr); 
+    // read
+    char str[10];
     sprintf(str, "%d", count);
     print_function(str);
 }
@@ -420,7 +404,7 @@ int main(void) {
     tmr_wait_period(TIMER3); 
     initFunctionSecondRaw();
     convertNumberToString(number_readings); // DA FARE
-    setCursorPositionFirstROw();
+    setCursorPositionFirstROw(0x80);
     while(1){
         algorithm();
         
