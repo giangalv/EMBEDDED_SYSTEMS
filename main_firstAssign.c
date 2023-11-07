@@ -295,18 +295,19 @@ void print_function(char printed_value[]){
     int i = 0;
      while(1){       
         while(SPI1STATbits.SPITBF == 1);
-        SPI1BUF = printed_value[i];        
-        int end = sizeof(printed_value);
+        SPI1BUF = printed_value[i];
+               
+        int end = strlen(printed_value)-1;
         if (i==end){
             return;
         }
-        i++;
+        i++; 
     }
 }
 
 void convertNumberToString(int count){ 
     // clean
-    char clr[10] = {' ', ' ', ' '};
+    char clr[19] = {' ', ' ', ' ',' ', ' ', ' '};
     print_function(clr); 
     // read
     char str[10];
