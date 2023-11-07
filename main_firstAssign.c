@@ -55,15 +55,8 @@ int readIndex = 0;
 int writeIndex = 0;
 char cb[SIZE_OF_BUFFER]; // size buffer
 */
-struct circular_buffer {
-    char buffer[SIZE_OF_BUFFER]; // size buffer
-    int bufferLength;        // writeIndex - readIndex
-    int readIndex;
-    int writeIndex;
-};
 
-struct circular_buffer cb;
-
+// TIMER FUNCTIONS
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
 // this is too high to be put in a 16 bit register (max 65535)
@@ -94,7 +87,6 @@ void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
         T3CONbits.TCKPS = count; // set PRESCALER
     }
 }
-
 void tmr_wait_period (int timer) {
     if(timer == TIMER1){
         while(IFS0bits.T1IF == 0){
@@ -112,7 +104,6 @@ void tmr_wait_period (int timer) {
         }
     }
 }
-
 void tmr_wait_ms(int timer, int ms){
     tmr_setup_period(timer, ms);
     if (timer == TIMER3){
@@ -209,6 +200,7 @@ void algorithm() {
     tmr_wait_period(TIMER2);
 }
 
+// INIT FUNCTIONS
 void SPI1_Init(){
     SPI1CONbits.MSTEN = 1; // master mode
     SPI1CONbits.MODE16 = 0; // 8-bit mode
@@ -216,7 +208,6 @@ void SPI1_Init(){
     SPI1CONbits.SPRE = 3; // 5:1 secondary prescaler
     SPI1STATbits.SPIEN = 1; // enable SPI
 }
-
 void UART2_Init() {
     U2MODE = 0;             // Clear the mode register
     U2STA = 0;              // Clear the status and control register
@@ -225,8 +216,19 @@ void UART2_Init() {
     U2MODEbits.UARTEN = 1;  // Enable UART
     U2STAbits.UTXEN = 1;    // Enable UART transmitter
 }
+void initFunctionSecondRaw(){
+    // Send a control command to set the cursor position
+    setCursorPositionSecondROw();
+    char initSecondRaw[11] = {'C','h', 'a', 'r' ,' ', 'R', 'e', 'c', 'v', ':', ' '}; //scrivo dal c10 o c11
+    int i = 0;
+    while(i<11){
+        while(SPI1STATbits.SPITBF == 1);
+        SPI1BUF = initSecondRaw[i];
+        i++;
+    }
+}
 
-// Function to set the cursor position
+// SETTING CURSOR FUNCTIONS
 void setCursorPositionFirstROw() {
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
@@ -235,8 +237,6 @@ void setCursorPositionFirstROw() {
     T1CONbits.TON = 1; // Starts the timer    
     tmr_wait_ms(TIMER3,1); // wait 1ms after moving the cursor
 }
-
-// Function to set the cursor position
 void setCursorPositionSecondROw() {
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
@@ -246,6 +246,7 @@ void setCursorPositionSecondROw() {
     tmr_wait_ms(TIMER3,1); // wait 1ms after moving the cursor
 }
 
+// PRINTING/CLEANING FUNCTIONS
 void cleaningFirstRow(){
     char cleaner = ' ';
     setCursorPositionFirstROw();
@@ -256,7 +257,6 @@ void cleaningFirstRow(){
         i++;
     }
 }
-
 void printFunctionFirstRow(char receivedChar){
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = receivedChar;
@@ -277,19 +277,6 @@ void printFunctionFirstRow(char receivedChar){
         // setCursorPosition(0xC0); // move at the beginning of the second row
     }
 }
-
-void initFunctionSecondRaw(){
-    // Send a control command to set the cursor position
-    setCursorPositionSecondROw();
-    char initSecondRaw[11] = {'C','h', 'a', 'r' ,' ', 'R', 'e', 'c', 'v', ':', ' '}; //scrivo dal c10 o c11
-    int i = 0;
-    while(i<11){
-        while(SPI1STATbits.SPITBF == 1);
-        SPI1BUF = initSecondRaw[i];
-        i++;
-    }
-}
-
 void print_function(char printed_value[]){
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
@@ -309,20 +296,6 @@ void print_function(char printed_value[]){
         }
     }
 }
-
-void convertNumberToString(int count){
-    char str[1000];
-    int digitsnumber = log10(count)+1;
-    // create the vector to print the number
-    for(int j=0; j<(digitsnumber+1); j++){
-        int num = count;  
-        num = '0' + (count % 10); // take out the last digit and convert it into a char
-        sprintf(str[j],"%d",num);
-        num /= 10; // remove the last digit    
-    }
-    print_function(str);     
-}
-
 void cleanSecondRow(int count){
     char str[1000];
     int digitsnumber = log10(count)+1;
@@ -332,19 +305,32 @@ void cleanSecondRow(int count){
     }
     print_function(str); 
 }
-
-void initBuffer(){
-    cb.bufferLength = 0; // writeIndex - readIndex
-    cb.readIndex = 0;
-    cb.writeIndex = 0;
-}
-
 void second_raw(){
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = '0xC10';
     //
 }
+
+void convertNumberToString(int *count){
+    /*
+    char str[1000];
+    int digitsnumber = log10(count)+1;
+    // create the vector to print the number
+    for(int j=0; j<(digitsnumber+1); j++){
+        int num = count;  
+        num = '0' + (count % 10); // take out the last digit and convert it into a char
+        sprintf(str[j],"%d",num);
+        num /= 10; // remove the last digit    
+    }
+    print_function(str);*/
+    
+    char str[1000];
+    sprintf(str, "%d", count);
+    print_function(str);
+}
+
+
 
 /*
 void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
@@ -356,6 +342,7 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
 }
 */
 
+// INTERRUPTS
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
     // Pulisci il flag dell'interrupt.
     IFS1bits.U2RXIF = 0;
@@ -367,6 +354,19 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
     }
 }
 
+// CIRCULAR BUFFER
+struct circular_buffer {
+    char buffer[SIZE_OF_BUFFER]; // size buffer
+    int bufferLength;        // writeIndex - readIndex
+    int readIndex;
+    int writeIndex;
+};
+struct circular_buffer cb;
+void initBuffer(){
+    cb.bufferLength = 0; // writeIndex - readIndex
+    cb.readIndex = 0;
+    cb.writeIndex = 0;
+}
 void push(char receivedChar){
     if (cb.bufferLength == SIZE_OF_BUFFER)
     {
@@ -382,7 +382,6 @@ void push(char receivedChar){
         }
     }
 }
-
 char pull(){
     char empty = ' ';
     if (cb.bufferLength == 0) 
@@ -401,7 +400,6 @@ char pull(){
         return receivedChar;
     }
 }
-
 
 int main(void) {
     IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
