@@ -49,6 +49,7 @@ void printFunctionFirstRow(char receivedChar);
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
 int position_first_raw[16] = {0x80,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8A,0x8B,0x8C,0x8D,0x8E,0x8F};
+int control_interrupt1 = 0; // interrupt flag
 /*
 int bufferLength = 0; // writeIndex - readIndex
 int readIndex = 0;
@@ -233,18 +234,6 @@ void convertNumberToString(int count){
     print_function(str);
 }
 
-
-
-/*
-void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
-    (){
-    IFS0bits.INT0IF = 0; // reset interrupt flag
-    
-    // Manage the losing bytes 
-    
-}
-*/
-
 // INTERRUPTS
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
     // Pulisci il flag dell'interrupt.
@@ -255,6 +244,25 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
         char receivedData = U2RXREG;
         push(receivedData);
     }
+}
+
+void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
+    (){
+    IFS0bits.INT0IF = 0; // reset interrupt flag
+   
+    while (U2STAbits.UTXBF);  // Wait for the transmit buffer to be empty
+    U2TXREG = number_readings;  // Send the number of chars received
+}
+
+void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt
+    (){
+    IFS1bits.INT1IF = 0; // reset interrupt flag
+   
+    cleaningFirstRow();
+    number_readings = 0;
+    number_first_raw = 0;
+    convertNumberToString(number_readings); 
+    setCursorPositionFirstROw(0x80);
 }
 
 // CIRCULAR BUFFER
@@ -309,6 +317,8 @@ int main(void) {
     U2STAbits.URXISEL = 3; // Set URXISEL to 11
     SPI1_Init(); // initializd SPI1
     UART2_Init(); // initialize UART2
+    IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
+    IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6
        
     tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER1 for allowing LCD to display values)
     tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER2 responsible of algorithm)
