@@ -37,6 +37,7 @@
 #define TIMER1 1
 #define TIMER2 2
 #define TIMER3 3
+#define TIMER4 4
 #define SIZE_OF_BUFFER 64
 
 void UART2_Init();
@@ -49,14 +50,7 @@ void printFunctionFirstRow(char receivedChar);
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
 int position_first_raw[16] = {0x80,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8A,0x8B,0x8C,0x8D,0x8E,0x8F};
-int flag_S5 = 0; // interrupt flag S5
-int flag_S6 = 0; // interrupt flag S6
-/*
-int bufferLength = 0; // writeIndex - readIndex
-int readIndex = 0;
-int writeIndex = 0;
-char cb[SIZE_OF_BUFFER]; // size buffer
-*/
+int flags_interrupts = 0; // interrupt flag S5 and S6
 
 // TIMER FUNCTIONS
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
@@ -88,6 +82,11 @@ void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
         PR3 = clock_steps; 
         T3CONbits.TCKPS = count; // set PRESCALER
     }
+    if (timer == TIMER4){
+        TMR4 = 0.0;
+        PR4 = clock_steps; 
+        T4CONbits.TCKPS = count; // set PRESCALER
+    }
 }
 void tmr_wait_period (int timer) {
     if(timer == TIMER1){
@@ -103,6 +102,14 @@ void tmr_wait_period (int timer) {
     else if(timer == TIMER3){
         while(IFS0bits.T3IF == 0){
             // Wait until the flag is high -> The timer finished to count
+        }
+    }
+    else if(timer == TIMER4){
+        while(IFS1bits.T4IF == 0){
+            // CHECKING if the BOTTON is already pressed
+            if(PORTDbits.RD0 == 1){
+                flags_interrupts = 1;
+            }
         }
     }
 }
@@ -154,17 +161,19 @@ void setCursorPositionFirstROw(int position) {
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = position;
-    IFS0bits.T1IF = 0; // Reset the flag
-    T1CONbits.TON = 1; // Starts the timer    
-    tmr_wait_ms(TIMER3,1); // wait 1ms after moving the cursor
+    // WAITING the CURSORs' moving
+    IFS0bits.T3IF = 0; // Reset the flag
+    T3CONbits.TON = 1; // Starts the timer
+    tmr_wait_period(TIMER3); 
 }
 void setCursorPositionSecondROw() {
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = 0xC0;
-    IFS0bits.T1IF = 0; // Reset the flag
-    T1CONbits.TON = 1; // Starts the timer
-    tmr_wait_ms(TIMER3,1); // wait 1ms after moving the cursor
+    // WAITING the CURSORs' moving
+    IFS0bits.T3IF = 0; // Reset the flag
+    T3CONbits.TON = 1; // Starts the timer
+    tmr_wait_period(TIMER3); 
 }
 
 // PRINTING/CLEANING FUNCTIONS
@@ -208,9 +217,10 @@ void print_function(char printed_value[]){
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = 0xCA;
-    IFS0bits.T1IF = 0; // Reset the flag
-    T1CONbits.TON = 1; // Starts the timer
-    tmr_wait_ms(TIMER3,1); // wait 1ms after moving the cursor
+    // WAITING the CURSORs' moving
+    IFS0bits.T3IF = 0; // Reset the flag
+    T3CONbits.TON = 1; // Starts the timer
+    tmr_wait_period(TIMER3); 
     
     int i = 0;
      while(1){       
@@ -249,14 +259,18 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
 
 void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
     (){
+    
     IFS0bits.INT0IF = 0; // reset interrupt flag
-    flag_S5 = 1;
+    
+    IFS1bits.T4IF = 0; // Reset the flag
+    T4CONbits.TON = 1; // Starts the timer
+    tmr_wait_period(TIMER4);
 }
 
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt
     (){
     IFS1bits.INT1IF = 0; // reset interrupt flag
-    flag_S6 = 1; 
+    flags_interrupts = 2; 
 }
 
 // CIRCULAR BUFFER
@@ -308,18 +322,18 @@ char pull(){
 
 // INTERUPT FLAGS
 void checkFlagsInterrupt(){
-    if(flag_S5 == 1){
+    if(flags_interrupts == 1){
         while (U2STAbits.UTXBF);  // Wait for the transmit buffer to be empty
         U2TXREG = number_readings;  // Send the number of chars received
-        flag_S5 = 0;
-        }
-    if(flag_S6 == 1){
+        flags_interrupts = 0;
+    }
+    if(flags_interrupts == 2){
         cleaningFirstRow();
         number_readings = 0;
         number_first_raw = 0;
         convertNumberToString(number_readings); 
         setCursorPositionFirstROw(0x80);
-        flag_S6 = 0;
+        flags_interrupts = 0;
     }
     return;
 }
@@ -331,20 +345,22 @@ int main(void) {
     UART2_Init(); // initialize UART2
     IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
     IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6
+    TRISDbits.TRISD0 = 1; // set the button S5 as input
        
-    tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER1 for allowing LCD to display values)
-    tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER2 responsible of algorithm)
-    tmr_setup_period(TIMER3, 3000);
-    
     initBuffer();
     
     char receivedChar;
     // STARTING THE LCD
-    IFS0bits.T3IF = 0; // Reset the flag
-    T3CONbits.TON = 1; // Starts the timer
-    tmr_wait_period(TIMER3); 
+    tmr_wait_ms(TIMER3,1000);
+    
+    // SET the TIMERS
+    tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER1 for allowing LCD to display values)
+    tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER2 responsible of algorithm)
+    tmr_setup_period(TIMER3, 1);
+    tmr_setup_period(TIMER4, 20);
+    
     initFunctionSecondRaw();
-    convertNumberToString(number_readings); // DA FARE
+    convertNumberToString(number_readings); 
     setCursorPositionFirstROw(0x80);
     while(1){
         algorithm();
