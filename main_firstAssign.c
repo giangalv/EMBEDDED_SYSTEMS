@@ -106,10 +106,11 @@ void tmr_wait_period (int timer) {
     }
     else if(timer == TIMER4){
         while(IFS1bits.T4IF == 0){
-            // CHECKING if the BOTTON is already pressed
-            if(PORTDbits.RD0 == 1){
-                flags_interrupts = 1;
-            }
+            // Wait until the flag is high -> The timer finished to count
+        }
+        // CHECKING if the BOTTON is already pressed
+        if(PORTDbits.RD0 == 1){
+            flags_interrupts = 1;
         }
     }
 }
@@ -356,12 +357,15 @@ int main(void) {
     // SET the TIMERS
     tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER1 for allowing LCD to display values)
     tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER2 responsible of algorithm)
-    tmr_setup_period(TIMER3, 1);
     tmr_setup_period(TIMER4, 20);
     
     initFunctionSecondRaw();
     convertNumberToString(number_readings); 
     setCursorPositionFirstROw(0x80);
+    // STARTING THE LCD
+    tmr_wait_ms(TIMER3,1000);
+    tmr_setup_period(TIMER3, 1);
+    
     while(1){
         algorithm();
         
