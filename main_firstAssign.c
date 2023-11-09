@@ -248,14 +248,10 @@ void convertNumberToString(int count){
 
 // INTERRUPTS
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
+    
     // Pulisci il flag dell'interrupt.
-    IFS1bits.U2RXIF = 0;
-    
-    if(U2STAbits.OERR == 1){
-        push();
-    }
-    
-    
+    IFS1bits.U2RXIF = 0;  
+    push();    
 }
 
 void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
@@ -305,8 +301,7 @@ void push(){
             cb.writeIndex = 0;
         }
         else{
-            char receivedChar = U2RXREG;
-            cb.buffer[cb.writeIndex] = receivedChar;
+            cb.buffer[cb.writeIndex] = U2RXREG;
             cb.bufferLength++;
             cb.writeIndex++;
             if (cb.writeIndex == SIZE_OF_BUFFER) 
@@ -357,6 +352,7 @@ char pull(){
 }*/
 void pull(){
     char receivedChar[cb.bufferLength];
+    memset(receivedChar,0,sizeof(receivedChar));
     int i = 0;
     if (cb.bufferLength == 0) 
     {
@@ -365,7 +361,7 @@ void pull(){
     }
     else{
         while(cb.bufferLength > 0){
-            receivedChar[i] = cb.buffer[cb.readIndex];
+            receivedChar[i] = (char*)cb.buffer[cb.readIndex];
             i++;
             cb.bufferLength--;
             cb.readIndex++;
@@ -445,13 +441,15 @@ int main(void) {
             printFunctionFirstRow(receivedData);
         }
         */
+        
         if(U2STAbits.URXDA == 1){   
             IEC1bits.U2RXIE = 0; // Disattiva l'interrupt per la ricezione UART2
             // Leggi il dato dal registro di ricezione UART2.
             char receivedData = U2RXREG;
             push_main(receivedData);   
             IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
-        }       
+        } 
+        
         pull();
         //tmr_wait_ms(TIMER3,1000);
         /*
