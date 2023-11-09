@@ -189,14 +189,13 @@ void cleaningFirstRow(){
 }
 
 void printFunctionFirstRow(char receivedChar[]){
-    int i = 0;
+    int i = 1;
     while(strlen(receivedChar)-i > 0){
         while(SPI1STATbits.SPITBF == 1);
-        SPI1BUF = receivedChar[i];
+        SPI1BUF = receivedChar[i-1];
         number_first_raw++;
         number_readings++;
         i++;
-        LATBbits.LATB0 = 1; // set the led high
         
         if(receivedChar=='\r'||receivedChar=='\n'){
             //function to clean the first raw;
@@ -375,16 +374,20 @@ int main(void) {
     while(1){
         algorithm();
         
-        char suca[] = {'c','i','a','8'};
+        /*
+        char suca[] = {'c','i','a','8','g'};
         printFunctionFirstRow(suca);
         tmr_wait_ms(TIMER3,1000);
         //LATBbits.LATB0 = 0; // set the led low
+        */
         
         if(U2STAbits.URXDA == 1){
             // Leggi il dato dal registro di ricezione UART2.
-            char receivedData = U2RXREG;
-            push(receivedData);
+            char receivedData[] = {U2RXREG};
+            //push(receivedData);
             LATBbits.LATB0 = 1; // set the led high
+            printFunctionFirstRow(receivedData);
+            //LATBbits.LATB0 = 0; // set the led high
         }
         
         if(cb.bufferLength > 0){
