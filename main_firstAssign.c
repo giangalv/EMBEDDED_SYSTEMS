@@ -45,7 +45,7 @@ void SPI1_Init();
 void algorithm();
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
-void printFunctionFirstRow(char receivedChar);
+void printFunctionFirstRow(char receivedChar[]);
 
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
@@ -188,11 +188,13 @@ void cleaningFirstRow(){
     }
 }
 
-void printFunctionFirstRow(char receivedChar){
-    while(SPI1STATbits.SPITBF == 1);
-    SPI1BUF = receivedChar;
-    number_first_raw++;
-    number_readings++;
+void printFunctionFirstRow(char receivedChar[]){
+    while(strlen(receivedChar)-1 > 0){
+        while(SPI1STATbits.SPITBF == 1);
+        SPI1BUF = receivedChar[strlen(receivedChar)-1];
+        number_first_raw++;
+        number_readings++;
+    }
     
     if(receivedChar=='\r'||receivedChar=='\n'){
         //function to clean the first raw;
@@ -308,7 +310,7 @@ char pull(){
     }
     else{
         while(cb.bufferLength > 0){
-            char receivedChar[cb.bufferLength-1] = cb.buffer[cb.readIndex];
+            receivedChar[cb.bufferLength - 1] = cb.buffer[cb.readIndex];
             cb.bufferLength--;
             cb.readIndex++;
             if (cb.readIndex == SIZE_OF_BUFFER) 
@@ -366,13 +368,12 @@ int main(void) {
     int i = 0;
     while(1){
         algorithm();
-        
-        char receivedChar[];
+    
         if(cb.bufferLength > 0){
-            receivedChar[] = pull();
-        }
-        printFunctionFirstRow(receivedChar);
-        
+            char receivedChar[cb.bufferLength];
+            receivedChar[cb.bufferLength] = pull();
+            printFunctionFirstRow(receivedChar[strlen(receivedChar)-1]);
+        }    
         
         convertNumberToString(number_readings);
         setCursorPositionFirstROw(position_first_raw[number_first_raw]);
@@ -385,3 +386,4 @@ int main(void) {
         tmr_wait_period(TIMER1); 
     }
 }
+
