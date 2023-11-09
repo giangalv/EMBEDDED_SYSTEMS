@@ -253,7 +253,7 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
     
     if(U2STAbits.URXDA == 1){
         // Leggi il dato dal registro di ricezione UART2.
-        char receivedData = U2RXREG;
+        char receivedData[] = {U2RXREG};
         push(receivedData);
     }
 }
@@ -301,7 +301,7 @@ void push(char receivedChar){
             cb.writeIndex = 0;
         }
     }
-}
+}/*
 char pull(){
     char empty = ' ';
     char receivedChar[cb.bufferLength];
@@ -312,6 +312,27 @@ char pull(){
     }
     else{
         while(cb.bufferLength > 0){
+            receivedChar[cb.bufferLength - 1] = cb.buffer[cb.readIndex];
+            cb.bufferLength--;
+            cb.readIndex++;
+            if (cb.readIndex == SIZE_OF_BUFFER) 
+            {
+                cb.readIndex = 0;
+            }
+        }
+        return receivedChar;
+    }
+}*/
+char pull(){
+    char empty = ' ';
+    char receivedChar[cb.bufferLength];
+    if (cb.bufferLength == 0) 
+    {
+        //printf(?Buffer is empty!?);
+        return empty;
+    }
+    else{
+        if(cb.bufferLength > 0){
             receivedChar[cb.bufferLength - 1] = cb.buffer[cb.readIndex];
             cb.bufferLength--;
             cb.readIndex++;
@@ -392,8 +413,10 @@ int main(void) {
         
         if(cb.bufferLength > 0){
             char receivedChar[cb.bufferLength];
-            receivedChar[cb.bufferLength] = pull();
-            printFunctionFirstRow(receivedChar[strlen(receivedChar)-1]);
+            while(cb.bufferLength > 0){
+                receivedChar[cb.bufferLength-1] = pull();
+            }
+            printFunctionFirstRow(receivedChar);
             convertNumberToString(number_readings);
             setCursorPositionFirstROw(position_first_raw[number_first_raw]);
             LATBbits.LATB0 = 0; // set the led low
