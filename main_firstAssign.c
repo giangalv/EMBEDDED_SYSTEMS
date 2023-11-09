@@ -106,7 +106,6 @@ void tmr_wait_period (int timer) {
     }
     else if(timer == TIMER4){
         while(IFS1bits.T4IF == 0){
-            // Wait until the flag is high -> The timer finished to count
         }
         // CHECKING if the BOTTON is already pressed
         if(PORTDbits.RD0 == 1){
@@ -194,9 +193,6 @@ void printFunctionFirstRow(char receivedChar){
     SPI1BUF = receivedChar;
     number_first_raw++;
     number_readings++;
-    
-    convertNumberToString(number_readings);
-    setCursorPositionFirstROw(position_first_raw[number_first_raw]);
     
     if(receivedChar=='\r'||receivedChar=='\n'){
         //function to clean the first raw;
@@ -287,7 +283,7 @@ void initBuffer(){
     cb.readIndex = 0;
     cb.writeIndex = 0;
 }
-void push(char receivedChar){
+void push(char receivedChar[]){
     if (cb.bufferLength == SIZE_OF_BUFFER)
     {
         //printf(?Buffer is full!?);
@@ -304,18 +300,21 @@ void push(char receivedChar){
 }
 char pull(){
     char empty = ' ';
+    char receivedChar[cb.bufferLength];
     if (cb.bufferLength == 0) 
     {
         //printf(?Buffer is empty!?);
         return empty;
     }
     else{
-        char receivedChar = cb.buffer[cb.readIndex];
-        cb.bufferLength--;
-        cb.readIndex++;
-        if (cb.readIndex == SIZE_OF_BUFFER) 
-        {
-            cb.readIndex = 0;
+        while(cb.bufferLength > 0){
+            char receivedChar[cb.bufferLength-1] = cb.buffer[cb.readIndex];
+            cb.bufferLength--;
+            cb.readIndex++;
+            if (cb.readIndex == SIZE_OF_BUFFER) 
+            {
+                cb.readIndex = 0;
+            }
         }
         return receivedChar;
     }
@@ -350,10 +349,8 @@ int main(void) {
        
     initBuffer();
     
-    char receivedChar;
     // STARTING THE LCD
     tmr_wait_ms(TIMER3,1000);
-    
     // SET the TIMERS
     tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER1 for allowing LCD to display values)
     tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER2 responsible of algorithm)
@@ -362,17 +359,24 @@ int main(void) {
     initFunctionSecondRaw();
     convertNumberToString(number_readings); 
     setCursorPositionFirstROw(0x80);
-    // STARTING THE LCD
+    // WAIT THE LCD
     tmr_wait_ms(TIMER3,1000);
     tmr_setup_period(TIMER3, 1);
     
+    int i = 0;
     while(1){
         algorithm();
         
+        char receivedChar[];
         if(cb.bufferLength > 0){
-            receivedChar = pull();
-            printFunctionFirstRow(receivedChar);
+            receivedChar[] = pull();
         }
+        printFunctionFirstRow(receivedChar);
+        
+        
+        convertNumberToString(number_readings);
+        setCursorPositionFirstROw(position_first_raw[number_first_raw]);
+        
         // check the interrupts flag
         checkFlagsInterrupt();
 
