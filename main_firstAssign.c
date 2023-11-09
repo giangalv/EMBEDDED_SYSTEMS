@@ -189,10 +189,10 @@ void cleaningFirstRow(){
 }
 
 void printFunctionFirstRow(char receivedChar[]){
-    int i = 1;
+    int i = 0;
     while(strlen(receivedChar)-i > 0){
         while(SPI1STATbits.SPITBF == 1);
-        SPI1BUF = receivedChar[i-1];
+        SPI1BUF = receivedChar[i];
         number_first_raw++;
         number_readings++;
         i++;
@@ -400,28 +400,39 @@ int main(void) {
         printFunctionFirstRow(suca);
         tmr_wait_ms(TIMER3,1000);
         //LATBbits.LATB0 = 0; // set the led low
+        -----
+         
+        char receivedData[3];
+        if(U2STAbits.URXDA == 1){
+            while(U2STAbits.URXDA == 1){
+                int i = 0;
+                receivedData[i] = U2RXREG;
+                i++;
+            }
+            printFunctionFirstRow(receivedData);
+        }
         */
-        
         if(U2STAbits.URXDA == 1){
             // Leggi il dato dal registro di ricezione UART2.
             char receivedData[] = {U2RXREG};
             //push(receivedData);
             LATBbits.LATB0 = 1; // set the led high
             printFunctionFirstRow(receivedData);
-            //LATBbits.LATB0 = 0; // set the led high
+            LATBbits.LATB0 = 0; // set the led high
         }
-        
+        tmr_wait_ms(TIMER3,1000);
+        /*
         if(cb.bufferLength > 0){
             char receivedChar[cb.bufferLength];
             while(cb.bufferLength > 0){
-                receivedChar[cb.bufferLength-1] = pull();
+                receivedChar[cb.bufferLength] = pull();
             }
             printFunctionFirstRow(receivedChar);
             convertNumberToString(number_readings);
             setCursorPositionFirstROw(position_first_raw[number_first_raw]);
             LATBbits.LATB0 = 0; // set the led low
         }    
-       
+       */
         // check the interrupts flag
         checkFlagsInterrupt();
 
