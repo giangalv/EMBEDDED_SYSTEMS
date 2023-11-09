@@ -251,11 +251,11 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
     // Pulisci il flag dell'interrupt.
     IFS1bits.U2RXIF = 0;
     
-    if(U2STAbits.URXDA == 1){
-        // Leggi il dato dal registro di ricezione UART2.
-        char receivedData = U2RXREG;
-        push(receivedData);
+    if(U2STAbits.OERR == 1){
+        push();
     }
+    
+    
 }
 
 void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
@@ -287,7 +287,38 @@ void initBuffer(){
     cb.readIndex = 0;
     cb.writeIndex = 0;
 }
-void push(char receivedChar){
+
+void push(){     
+    while(U2STAbits.URXDA == 1){
+        if (cb.bufferLength == SIZE_OF_BUFFER)
+        {
+            char fastPrint[cb.bufferLength];
+            int i = 0;
+            while(cb.bufferLength > 0){
+                fastPrint[i] = cb.buffer[cb.readIndex];
+                cb.bufferLength--;
+                cb.readIndex++;                   
+            }
+            printFunctionFirstRow(fastPrint);
+            cb.bufferLength = 0; // writeIndex - readIndex
+            cb.readIndex = 0;
+            cb.writeIndex = 0;
+        }
+        else{
+            char receivedChar = U2RXREG;
+            cb.buffer[cb.writeIndex] = receivedChar;
+            cb.bufferLength++;
+            cb.writeIndex++;
+            if (cb.writeIndex == SIZE_OF_BUFFER) 
+            {
+                cb.writeIndex = 0;
+            } 
+        }       
+    }
+    U2STAbits.OERR = 0;   
+}
+
+void push_main(char receivedChar){
     if (cb.bufferLength == SIZE_OF_BUFFER)
     {
         //printf(?Buffer is full!?);
@@ -301,7 +332,8 @@ void push(char receivedChar){
             cb.writeIndex = 0;
         }
     }
-}/*
+}
+/*
 char pull(){
     char empty = ' ';
     char receivedChar[cb.bufferLength];
@@ -413,20 +445,14 @@ int main(void) {
             printFunctionFirstRow(receivedData);
         }
         */
-        if(U2STAbits.URXDA == 1){
+        if(U2STAbits.URXDA == 1){   
+            IEC1bits.U2RXIE = 0; // Disattiva l'interrupt per la ricezione UART2
             // Leggi il dato dal registro di ricezione UART2.
             char receivedData = U2RXREG;
-            push(receivedData);
-        }
-        
+            push_main(receivedData);   
+            IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
+        }       
         pull();
-        if(U2STAbits.URXDA == 1){
-            // Leggi il dato dal registro di ricezione UART2.
-            //push(receivedData);
-            LATBbits.LATB0 = 1; // set the led high
-            //printFunctionFirstRow(receivedData);
-            LATBbits.LATB0 = 0; // set the led high
-        }
         //tmr_wait_ms(TIMER3,1000);
         /*
         if(cb.bufferLength > 0){
