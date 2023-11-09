@@ -189,27 +189,30 @@ void cleaningFirstRow(){
 }
 
 void printFunctionFirstRow(char receivedChar[]){
-    while(strlen(receivedChar)-1 > 0){
+    int i = 1;
+    while(strlen(receivedChar) > 0){
         while(SPI1STATbits.SPITBF == 1);
-        SPI1BUF = receivedChar[strlen(receivedChar)-1];
+        SPI1BUF = receivedChar[strlen(receivedChar)-i];
         number_first_raw++;
         number_readings++;
+        i ++;
+        
+        
+        if(receivedChar=='\r'||receivedChar=='\n'){
+            //function to clean the first raw;
+            cleaningFirstRow();
+            number_first_raw = 0;
+            setCursorPositionFirstROw(0x80);   
+        }  
+
+        if(number_first_raw==16){
+            //clean first raw
+            cleaningFirstRow();
+            number_first_raw = 0;
+            setCursorPositionFirstROw(0x80);
+            // setCursorPosition(0xC0); // move at the beginning of the second row
+        } 
     }
-    
-    if(receivedChar=='\r'||receivedChar=='\n'){
-        //function to clean the first raw;
-        cleaningFirstRow();
-        number_first_raw = 0;
-        setCursorPositionFirstROw(0x80);   
-    }  
-    
-    if(number_first_raw==16){
-        //clean first raw
-        cleaningFirstRow();
-        number_first_raw = 0;
-        setCursorPositionFirstROw(0x80);
-        // setCursorPosition(0xC0); // move at the beginning of the second row
-    } 
 }
 
 void print_function(char printed_value[]){
@@ -285,7 +288,7 @@ void initBuffer(){
     cb.readIndex = 0;
     cb.writeIndex = 0;
 }
-void push(char receivedChar[]){
+void push(char receivedChar){
     if (cb.bufferLength == SIZE_OF_BUFFER)
     {
         //printf(?Buffer is full!?);
@@ -341,10 +344,14 @@ void checkFlagsInterrupt(){
 }
 
 int main(void) {
-    IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
-    U2STAbits.URXISEL = 3; // Set URXISEL to 11
+    
+    TRISBbits.TRISB0 = 0; // set the pin B02 as output
+    LATBbits.LATB0 = 0; // set the led low
+    
     SPI1_Init(); // initializd SPI1
     UART2_Init(); // initialize UART2
+    IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
+    U2STAbits.URXISEL = 3; // Set URXISEL to 11
     IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
     IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6
     TRISDbits.TRISD0 = 1; // set the button S5 as input
@@ -365,19 +372,25 @@ int main(void) {
     tmr_wait_ms(TIMER3,1000);
     tmr_setup_period(TIMER3, 1);
     
-    int i = 0;
     while(1){
         algorithm();
-    
+
+        if(U2STAbits.URXDA == 1){
+            // Leggi il dato dal registro di ricezione UART2.
+            char receivedData = U2RXREG;
+            push(receivedData);
+            LATBbits.LATB0 = 1; // set the led high
+        }
+        
         if(cb.bufferLength > 0){
             char receivedChar[cb.bufferLength];
             receivedChar[cb.bufferLength] = pull();
             printFunctionFirstRow(receivedChar[strlen(receivedChar)-1]);
+            convertNumberToString(number_readings);
+            setCursorPositionFirstROw(position_first_raw[number_first_raw]);
+            LATBbits.LATB0 = 0; // set the led high
         }    
-        
-        convertNumberToString(number_readings);
-        setCursorPositionFirstROw(position_first_raw[number_first_raw]);
-        
+       
         // check the interrupts flag
         checkFlagsInterrupt();
 
@@ -386,4 +399,3 @@ int main(void) {
         tmr_wait_period(TIMER1); 
     }
 }
-
