@@ -312,14 +312,19 @@ void pull(){
 		return;
 	    }
 	    else{
-		char receivedChar = cb.buffer[cb.readIndex];
-		cb.bufferLength--;
-		cb.readIndex++;
-		if (cb.readIndex == SIZE_OF_BUFFER) 
-		{
-		    cb.readIndex = 0;
-		}
-		printFunctionFirstRow(receivedChar);
+            char receivedChar = cb.buffer[cb.readIndex];
+            cb.bufferLength--;
+            cb.readIndex++;
+            if (cb.readIndex == SIZE_OF_BUFFER) 
+            {
+                cb.readIndex = 0;
+            }
+            printFunctionFirstRow(receivedChar);
+            if (cb.bufferLength == 0) 
+            {
+                convertNumberToString(number_readings);
+                setCursorPositionFirstROw(position_first_raw[number_first_raw]);
+            }
 	    }
 	}
 }
@@ -392,9 +397,6 @@ int main(void) {
 
         // Check if there are characters in the buffer
         pull();
-            
-        convertNumberToString(number_readings);
-        setCursorPositionFirstROw(position_first_raw[number_first_raw]);
         
         
         // Check the interrupts flag
