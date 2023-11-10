@@ -284,6 +284,7 @@ void initBuffer(){
     cb.readIndex = 0;
     cb.writeIndex = 0;
 }
+
 void push(char receivedChar){
     if (cb.bufferLength == SIZE_OF_BUFFER)
     {
@@ -299,24 +300,32 @@ void push(char receivedChar){
         }
     }
 }
-char pull(){
-    char empty = ' ';
-    if (cb.bufferLength == 0) 
-    {
-        //printf(?Buffer is empty!?);
-        return empty;
-    }
-    else{
-        char receivedChar = cb.buffer[cb.readIndex];
-        cb.bufferLength--;
-        cb.readIndex++;
-        if (cb.readIndex == SIZE_OF_BUFFER) 
-        {
-            cb.readIndex = 0;
-        }
-        return receivedChar;
-    }
+
+
+
+
+void pull(){
+	while (cb.bufferLength > 0){
+	    if (cb.bufferLength == 0) 
+	    {
+		//printf(?Buffer is empty!?);
+		return;
+	    }
+	    else{
+		char receivedChar = cb.buffer[cb.readIndex];
+		cb.bufferLength--;
+		cb.readIndex++;
+		if (cb.readIndex == SIZE_OF_BUFFER) 
+		{
+		    cb.readIndex = 0;
+		}
+		printFunctionFirstRow(receivedChar);
+	    }
+	}
 }
+
+
+
 
 // INTERUPT FLAGS
 void checkFlagsInterrupt(){
@@ -381,16 +390,12 @@ int main(void) {
     while (1) {
         algorithm();
 
-            // Check if there are characters in the buffer
-            while (cb.bufferLength > 0) {
-            // Dequeue and process all available characters
-            receivedChar = pull();
-            printFunctionFirstRow(receivedChar);
-            if (cb.bufferLength == 0){
-                convertNumberToString(number_readings);
-                setCursorPositionFirstROw(position_first_raw[number_first_raw]);
-            }
-        }
+        // Check if there are characters in the buffer
+        pull();
+            
+        convertNumberToString(number_readings);
+        setCursorPositionFirstROw(position_first_raw[number_first_raw]);
+        
         
         // Check the interrupts flag
         checkFlagsInterrupt();
