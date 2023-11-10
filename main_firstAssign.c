@@ -301,8 +301,21 @@ void push(char receivedChar){
     }
 }
 
-
-
+void push_main(char receivedChar){
+    if (cb.bufferLength == SIZE_OF_BUFFER)
+    {
+        //printf(?Buffer is full!?);
+    }
+    else{
+        cb.buffer[cb.writeIndex] = receivedChar;
+        cb.bufferLength++;
+        cb.writeIndex++;
+        if (cb.writeIndex == SIZE_OF_BUFFER) 
+        {
+            cb.writeIndex = 0;
+        }
+    }
+}
 
 void pull(){
 	while (cb.bufferLength > 0){
@@ -351,17 +364,17 @@ void checkFlagsInterrupt(){
 }
 
 int main(void) {
-    IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
-    U2STAbits.URXISEL = 3; // Set URXISEL to 11
     SPI1_Init(); // initializd SPI1
     UART2_Init(); // initialize UART2
+    IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
+    U2STAbits.URXISEL = 3; // Set URXISEL to 11
     IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
     IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6
     TRISDbits.TRISD0 = 1; // set the button S5 as input
        
     initBuffer();
     
-    char receivedChar;
+    //char receivedChar;
     // STARTING THE LCD
     tmr_wait_ms(TIMER3,1000);
     
@@ -394,10 +407,15 @@ int main(void) {
     */
     while (1) {
         algorithm();
-
+        if(U2STAbits.URXDA == 1){   
+            IEC1bits.U2RXIE = 0; // Disattiva l'interrupt per la ricezione UART2
+            // Leggi il dato dal registro di ricezione UART2.
+            char receivedData = U2RXREG;
+            push_main(receivedData);   
+            IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
+        }
         // Check if there are characters in the buffer
         pull();
-        
         
         // Check the interrupts flag
         checkFlagsInterrupt();
