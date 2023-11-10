@@ -38,14 +38,14 @@
 #define TIMER2 2
 #define TIMER3 3
 #define TIMER4 4
-#define SIZE_OF_BUFFER 64
+#define SIZE_OF_BUFFER 16
 
 void UART2_Init();
 void SPI1_Init();
 void algorithm();
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
-void printFunctionFirstRow(char receivedChar[]);
+void printFunctionFirstRow(char receivedChar);
 
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
@@ -106,6 +106,7 @@ void tmr_wait_period (int timer) {
     }
     else if(timer == TIMER4){
         while(IFS1bits.T4IF == 0){
+            // Wait until the flag is high -> The timer finished to count
         }
         // CHECKING if the BOTTON is already pressed
         if(PORTDbits.RD0 == 1){
@@ -158,13 +159,15 @@ void initFunctionSecondRaw(){
 
 // SETTING CURSOR FUNCTIONS
 void setCursorPositionFirstROw(int position) {
-    // Send a control command to set the cursor position
-    while(SPI1STATbits.SPITBF == 1);
-    SPI1BUF = position;
     // WAITING the CURSORs' moving
     IFS0bits.T3IF = 0; // Reset the flag
     T3CONbits.TON = 1; // Starts the timer
-    tmr_wait_period(TIMER3); 
+    tmr_wait_period(TIMER3);
+    
+    // Send a control command to set the cursor position
+    while(SPI1STATbits.SPITBF == 1);
+    SPI1BUF = position;
+     
 }
 void setCursorPositionSecondROw() {
     // Send a control command to set the cursor position
@@ -188,30 +191,25 @@ void cleaningFirstRow(){
     }
 }
 
-void printFunctionFirstRow(char receivedChar[]){
-    int i = 0;
-    while(strlen(receivedChar)-i > 0){
-        while(SPI1STATbits.SPITBF == 1);
-        SPI1BUF = receivedChar[i];
-        number_first_raw++;
-        number_readings++;
-        i++;
+void printFunctionFirstRow(char receivedChar){
+    while(SPI1STATbits.SPITBF == 1);
+    SPI1BUF = receivedChar;
+    number_first_raw++;
+    number_readings++;
         
-        if(receivedChar=='\r'||receivedChar=='\n'){
-            //function to clean the first raw;
-            cleaningFirstRow();
-            number_first_raw = 0;
-            setCursorPositionFirstROw(0x80);   
-        }  
-
-        if(number_first_raw==16){
-            //clean first raw
-            cleaningFirstRow();
-            number_first_raw = 0;
-            setCursorPositionFirstROw(0x80);
-            // setCursorPosition(0xC0); // move at the beginning of the second row
-        } 
-    }
+    if(receivedChar=='\r'||receivedChar=='\n'){
+        //function to clean the first raw;
+        cleaningFirstRow();
+        number_first_raw = 0;
+        setCursorPositionFirstROw(0x80);   
+    }  
+    
+    if(number_first_raw==16){
+        //clean first raw
+        cleaningFirstRow();
+        number_first_raw = 0;
+        setCursorPositionFirstROw(0x80);
+    } 
 }
 
 void print_function(char printed_value[]){
@@ -250,15 +248,18 @@ void convertNumberToString(int count){
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
     
     // Pulisci il flag dell'interrupt.
-    IFS1bits.U2RXIF = 0;  
-    push();    
+    IFS1bits.U2RXIF = 0;
+    if(U2STAbits.URXDA == 1){
+        // Leggi il dato dal registro di ricezione UART2.
+        char receivedData = U2RXREG;
+        push(receivedData);
+    }    
 }
 
 void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
     (){
     
     IFS0bits.INT0IF = 0; // reset interrupt flag
-    
     IFS1bits.T4IF = 0; // Reset the flag
     T4CONbits.TON = 1; // Starts the timer
     tmr_wait_period(TIMER4);
@@ -283,37 +284,7 @@ void initBuffer(){
     cb.readIndex = 0;
     cb.writeIndex = 0;
 }
-
-void push(){     
-    while(U2STAbits.URXDA == 1){
-        if (cb.bufferLength == SIZE_OF_BUFFER)
-        {
-            char fastPrint[cb.bufferLength];
-            int i = 0;
-            while(cb.bufferLength > 0){
-                fastPrint[i] = cb.buffer[cb.readIndex];
-                cb.bufferLength--;
-                cb.readIndex++;                   
-            }
-            printFunctionFirstRow(fastPrint);
-            cb.bufferLength = 0; // writeIndex - readIndex
-            cb.readIndex = 0;
-            cb.writeIndex = 0;
-        }
-        else{
-            cb.buffer[cb.writeIndex] = U2RXREG;
-            cb.bufferLength++;
-            cb.writeIndex++;
-            if (cb.writeIndex == SIZE_OF_BUFFER) 
-            {
-                cb.writeIndex = 0;
-            } 
-        }       
-    }
-    U2STAbits.OERR = 0;   
-}
-
-void push_main(char receivedChar){
+void push(char receivedChar){
     if (cb.bufferLength == SIZE_OF_BUFFER)
     {
         //printf(?Buffer is full!?);
@@ -328,49 +299,22 @@ void push_main(char receivedChar){
         }
     }
 }
-/*
 char pull(){
     char empty = ' ';
-    char receivedChar[cb.bufferLength];
     if (cb.bufferLength == 0) 
     {
         //printf(?Buffer is empty!?);
         return empty;
     }
     else{
-        while(cb.bufferLength > 0){
-            receivedChar[cb.bufferLength - 1] = cb.buffer[cb.readIndex];
-            cb.bufferLength--;
-            cb.readIndex++;
-            if (cb.readIndex == SIZE_OF_BUFFER) 
-            {
-                cb.readIndex = 0;
-            }
+        char receivedChar = cb.buffer[cb.readIndex];
+        cb.bufferLength--;
+        cb.readIndex++;
+        if (cb.readIndex == SIZE_OF_BUFFER) 
+        {
+            cb.readIndex = 0;
         }
         return receivedChar;
-    }
-}*/
-void pull(){
-    char receivedChar[cb.bufferLength];
-    memset(receivedChar,0,sizeof(receivedChar));
-    int i = 0;
-    if (cb.bufferLength == 0) 
-    {
-        //printf(?Buffer is empty!?);
-        return;
-    }
-    else{
-        while(cb.bufferLength > 0){
-            receivedChar[i] = (char*)cb.buffer[cb.readIndex];
-            i++;
-            cb.bufferLength--;
-            cb.readIndex++;
-            if (cb.readIndex == SIZE_OF_BUFFER) 
-            {
-                cb.readIndex = 0;
-            }
-        }
-        printFunctionFirstRow(receivedChar);
     }
 }
 
@@ -393,22 +337,20 @@ void checkFlagsInterrupt(){
 }
 
 int main(void) {
-    
-    TRISBbits.TRISB0 = 0; // set the pin B02 as output
-    LATBbits.LATB0 = 0; // set the led low
-    
-    SPI1_Init(); // initializd SPI1
-    UART2_Init(); // initialize UART2
     IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
     U2STAbits.URXISEL = 3; // Set URXISEL to 11
+    SPI1_Init(); // initializd SPI1
+    UART2_Init(); // initialize UART2
     IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
     IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6
     TRISDbits.TRISD0 = 1; // set the button S5 as input
        
     initBuffer();
     
+    char receivedChar;
     // STARTING THE LCD
     tmr_wait_ms(TIMER3,1000);
+    
     // SET the TIMERS
     tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER1 for allowing LCD to display values)
     tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER2 responsible of algorithm)
@@ -417,58 +359,44 @@ int main(void) {
     initFunctionSecondRaw();
     convertNumberToString(number_readings); 
     setCursorPositionFirstROw(0x80);
-    // WAIT THE LCD
+    // STARTING THE LCD
     tmr_wait_ms(TIMER3,1000);
     tmr_setup_period(TIMER3, 1);
-    
+    /*
     while(1){
         algorithm();
         
-        /*
-        char suca[] = {'c','i','a','8','g'};
-        printFunctionFirstRow(suca);
-        tmr_wait_ms(TIMER3,1000);
-        //LATBbits.LATB0 = 0; // set the led low
-        -----
-         
-        char receivedData[3];
-        if(U2STAbits.URXDA == 1){
-            while(U2STAbits.URXDA == 1){
-                int i = 0;
-                receivedData[i] = U2RXREG;
-                i++;
-            }
-            printFunctionFirstRow(receivedData);
-        }
-        */
-        
-        if(U2STAbits.URXDA == 1){   
-            IEC1bits.U2RXIE = 0; // Disattiva l'interrupt per la ricezione UART2
-            // Leggi il dato dal registro di ricezione UART2.
-            char receivedData = U2RXREG;
-            push_main(receivedData);   
-            IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
-        } 
-        
-        pull();
-        //tmr_wait_ms(TIMER3,1000);
-        /*
         if(cb.bufferLength > 0){
-            char receivedChar[cb.bufferLength];
-            while(cb.bufferLength > 0){
-                receivedChar[cb.bufferLength] = pull();
-            }
+            receivedChar = pull();
             printFunctionFirstRow(receivedChar);
-            convertNumberToString(number_readings);
-            setCursorPositionFirstROw(position_first_raw[number_first_raw]);
-            LATBbits.LATB0 = 0; // set the led low
-        }    
-       */
+        }
         // check the interrupts flag
         checkFlagsInterrupt();
 
         IFS0bits.T1IF = 0; // Reset the flag
         T1CONbits.TON = 1; // Starts the timer
         tmr_wait_period(TIMER1); 
+    }
+    */
+    while (1) {
+        algorithm();
+
+        // Check if there are characters in the buffer
+        while (cb.bufferLength > 0) {
+	    // Dequeue and process all available characters
+	    receivedChar = pull();
+	    printFunctionFirstRow(receivedChar);
+        if (cb.bufferLength == 0){
+             convertNumberToString(number_readings);
+            setCursorPositionFirstROw(position_first_raw[number_first_raw]);
+        }
+        }
+        
+        // Check the interrupts flag
+        checkFlagsInterrupt();
+
+        IFS0bits.T1IF = 0; // Reset the flag
+        T1CONbits.TON = 1; // Starts the timer
+        tmr_wait_period(TIMER1);
     }
 }
