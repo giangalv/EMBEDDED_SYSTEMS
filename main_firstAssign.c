@@ -48,22 +48,6 @@ void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
 void printFunctionFirstRow(char receivedChar);
 
-// CIRCULAR BUFFER
-struct circular_buffer {
-    char buffer[SIZE_OF_BUFFER]; // size buffer
-    int bufferLength;        // writeIndex - readIndex
-    int readIndex;
-    int writeIndex;
-    bool flag;
-};
-struct circular_buffer cb;
-void initBuffer(){
-    cb.bufferLength = 0; // writeIndex - readIndex
-    cb.readIndex = 0;
-    cb.writeIndex = 0;
-    cb.flag = false;
-}
-
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
 int position_first_raw[16] = {0x80,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8A,0x8B,0x8C,0x8D,0x8E,0x8F};
@@ -109,10 +93,6 @@ void tmr_wait_period (int timer) {
     if(timer == TIMER1){
         while(IFS0bits.T1IF == 0){
             // Wait until the flag is high -> The timer finished to count
-        }
-        if(cb.flag == true){
-            convertNumberToString(number_readings);
-            setCursorPositionFirstROw(position_first_raw[number_first_raw]);
         }
     }   
     else if(timer == TIMER2){
@@ -292,6 +272,22 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt
     flags_interrupts = 2; 
 }
 
+// CIRCULAR BUFFER
+struct circular_buffer {
+    char buffer[SIZE_OF_BUFFER]; // size buffer
+    int bufferLength;        // writeIndex - readIndex
+    int readIndex;
+    int writeIndex;
+    bool flag;
+};
+struct circular_buffer cb;
+void initBuffer(){
+    cb.bufferLength = 0; // writeIndex - readIndex
+    cb.readIndex = 0;
+    cb.writeIndex = 0;
+    cb.flag = true;
+}
+
 void push(char receivedChar){
     if (cb.bufferLength == SIZE_OF_BUFFER)
     {
@@ -344,8 +340,8 @@ void pull(){
             printFunctionFirstRow(receivedChar);
             if (cb.bufferLength == 0 && cb.flag == false) 
             {
-                //convertNumberToString(number_readings);
-                //setCursorPositionFirstROw(position_first_raw[number_first_raw]);
+                convertNumberToString(number_readings);
+                setCursorPositionFirstROw(position_first_raw[number_first_raw]);
                 cb.flag = true;
             }
 	    }
@@ -410,7 +406,7 @@ int main(void) {
             // Leggi il dato dal registro di ricezione UART2.
             char receivedData = U2RXREG;
             push_main(receivedData);   
-            IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
+            IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
         }
         // Check if there are characters in the buffer
         pull();
@@ -418,12 +414,12 @@ int main(void) {
         // Check the interrupts flag
         checkFlagsInterrupt();
 
-        //cb.flag = false;
+        cb.flag = false;
         
         IFS0bits.T1IF = 0; // Reset the flag
         T1CONbits.TON = 1; // Starts the timer
         tmr_wait_period(TIMER1);
         
-        //LATBbits.LATB0 = 0; // set the pin low
+        LATBbits.LATB0 = 0; // set the pin low
     }
 }
