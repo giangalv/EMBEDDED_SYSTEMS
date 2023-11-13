@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdbool.h>
 
 #define FOSC 7372800.0 //Hz Clock breadboard
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
@@ -196,7 +197,7 @@ void printFunctionFirstRow(char receivedChar){
     SPI1BUF = receivedChar;
     number_first_raw++;
     number_readings++;
-        
+    
     if(receivedChar=='\r'||receivedChar=='\n'){
         //function to clean the first raw;
         cleaningFirstRow();
@@ -277,18 +278,21 @@ struct circular_buffer {
     int bufferLength;        // writeIndex - readIndex
     int readIndex;
     int writeIndex;
+    bool flag;
 };
 struct circular_buffer cb;
 void initBuffer(){
     cb.bufferLength = 0; // writeIndex - readIndex
     cb.readIndex = 0;
     cb.writeIndex = 0;
+    cb.flag = true;
 }
 
 void push(char receivedChar){
     if (cb.bufferLength == SIZE_OF_BUFFER)
     {
-        //printf(?Buffer is full!?);
+        LATBbits.LATB0 = 1; // set the pin high if the BUFFER IS FULL
+        number_readings++;
     }
     else{
         cb.buffer[cb.writeIndex] = receivedChar;
@@ -304,7 +308,8 @@ void push(char receivedChar){
 void push_main(char receivedChar){
     if (cb.bufferLength == SIZE_OF_BUFFER)
     {
-        //printf(?Buffer is full!?);
+        LATBbits.LATB0 = 1; // set the pin high if the BUFFER IS FULL
+        number_readings++;
     }
     else{
         cb.buffer[cb.writeIndex] = receivedChar;
@@ -333,10 +338,11 @@ void pull(){
                 cb.readIndex = 0;
             }
             printFunctionFirstRow(receivedChar);
-            if (cb.bufferLength == 0) 
+            if (cb.bufferLength == 0 && cb.flag == false) 
             {
                 convertNumberToString(number_readings);
                 setCursorPositionFirstROw(position_first_raw[number_first_raw]);
+                cb.flag = true;
             }
 	    }
 	}
@@ -364,6 +370,9 @@ void checkFlagsInterrupt(){
 }
 
 int main(void) {
+    TRISBbits.TRISB0 = 0; // set the pin B02 as output
+    LATBbits.LATB0 = 0; // set the pin low
+    
     SPI1_Init(); // initializd SPI1
     UART2_Init(); // initialize UART2
     IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
@@ -389,22 +398,7 @@ int main(void) {
     // STARTING THE LCD
     tmr_wait_ms(TIMER3,1000);
     tmr_setup_period(TIMER3, 1);
-    /*
-    while(1){
-        algorithm();
-        
-        if(cb.bufferLength > 0){
-            receivedChar = pull();
-            printFunctionFirstRow(receivedChar);
-        }
-        // check the interrupts flag
-        checkFlagsInterrupt();
-
-        IFS0bits.T1IF = 0; // Reset the flag
-        T1CONbits.TON = 1; // Starts the timer
-        tmr_wait_period(TIMER1); 
-    }
-    */
+   
     while (1) {
         algorithm();
         if(U2STAbits.URXDA == 1){   
@@ -420,8 +414,12 @@ int main(void) {
         // Check the interrupts flag
         checkFlagsInterrupt();
 
+        cb.flag = false;
+        
         IFS0bits.T1IF = 0; // Reset the flag
         T1CONbits.TON = 1; // Starts the timer
         tmr_wait_period(TIMER1);
+        
+        LATBbits.LATB0 = 0; // set the pin low
     }
 }
