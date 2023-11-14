@@ -267,27 +267,31 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
-    (){
-    IFS0bits.INT0IF = 0; // reset interrupt flag
-    IFS1bits.T4IF = 0; // Reset the flag
-    T4CONbits.TON = 1; // Starts the timer
-    tmr_wait_period(TIMER4);
-}
-
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt
     (){
     IFS1bits.INT1IF = 0; // reset interrupt flag
     flags_interrupts = 2; 
 }
 
+void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
+    (){
+    IFS0bits.INT0IF = 0; // reset interrupt flag
+    IEC0bits.INT0IE = 0; // block the interrupt 
+    IFS0bits.T1IF = 0; // Reset the flag
+    T1CONbits.TON = 1; // Starts the timer
+}
+
 void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt
     (){
     IFS0bits.T1IF = 0;            // reset interrupt flag
+    TMR1 = 0;                      
+    T1CONbits.TON = 0;          // Block the timer
     if(PORTDbits.RD0 == 1){       // CHECKING if the BOTTON S5 is already pressed
         flags_interrupts = 1;
+        IEC0bits.INT0IE = 1; // start the interrupt
+        return;
     }
-    
+    T1CONbits.TON = 1; // Starts the timer
 }
 
 // CIRCULAR BUFFER
@@ -388,11 +392,11 @@ int main(void) {
     UART2_Init(); // initialize UART2
     IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
     U2STAbits.URXISEL = 3; // Set URXISEL to 11
+    TRISDbits.TRISD0 = 1; // set the button S5 as input
+    TRISDbits.TRISD1 = 1; // set the button S6 as input
     IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
     IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6
     IEC0bits.T1IE = 1; //enable T1IE interrupt
-    TRISDbits.TRISD0 = 1; // set the button S5 as input
-    TRISDbits.TRISD1 = 1; // set the button S6 as input
        
     initBuffer();
     
@@ -427,8 +431,8 @@ int main(void) {
         // Check the interrupts flag
         checkFlagsInterrupt();
         
-        IFS0bits.T1IF = 0; // Reset the flag
-        T1CONbits.TON = 1; // Starts the timer
-        tmr_wait_period(TIMER1);
+        IFS1bits.T4IF = 0; // Reset the flag
+        T4CONbits.TON = 1; // Starts the timer
+        tmr_wait_period(TIMER4);
     }
 }
