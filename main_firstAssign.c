@@ -392,6 +392,7 @@ int main(void) {
     IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6
     IEC0bits.T1IE = 1; //enable T1IE interrupt
     TRISDbits.TRISD0 = 1; // set the button S5 as input
+    TRISDbits.TRISD1 = 1; // set the button S6 as input
        
     initBuffer();
     
