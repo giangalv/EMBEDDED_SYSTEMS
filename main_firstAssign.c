@@ -392,6 +392,7 @@ int main(void) {
     U2STAbits.URXISEL = 3; // Set URXISEL to 11
     IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
     IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6
+    IEC0bits.T1IE = 1; //enable T1IE interrupt
     TRISDbits.TRISD0 = 1; // set the button S5 as input
        
     initBuffer();
@@ -407,7 +408,7 @@ int main(void) {
     
     initFunctionSecondRaw();
     convertNumberToString(number_readings); 
-    setCursorPositionFirstROw(0x80);
+    setCursorPositionFirstRaw(0x80);
     // STARTING THE LCD
     tmr_wait_ms(TIMER3,1000);
     tmr_setup_period(TIMER3, 1); // Timer for moving the cursor from and to the first and second line of the LCD
