@@ -275,23 +275,18 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt
 
 void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
     (){
-    IFS0bits.INT0IF = 0; // reset interrupt flag
-    IEC0bits.INT0IE = 0; // block the interrupt 
+    IFS0bits.INT0IF = 0; // reset interrupt flag 
     IFS0bits.T1IF = 0; // Reset the flag
     T1CONbits.TON = 1; // Starts the timer
 }
 
 void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt
     (){
-    IFS0bits.T1IF = 0;            // reset interrupt flag
-    TMR1 = 0;                      
-    T1CONbits.TON = 0;          // Block the timer
+    IEC0bits.INT0IE = 0; // disable INT0 interrupt botton S5
     if(PORTDbits.RD0 == 1){       // CHECKING if the BOTTON S5 is already pressed
         flags_interrupts = 1;
-        IEC0bits.INT0IE = 1; // start the interrupt
-        return;
+        IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
     }
-    T1CONbits.TON = 1; // Starts the timer
 }
 
 // CIRCULAR BUFFER
@@ -388,6 +383,10 @@ void checkFlagsInterrupt(){
 }
 
 int main(void) {
+    TRISBbits.TRISB0 = 0; // set the pin B02 as output
+    LATBbits.LATB0 = 0; // set the pin low
+    
+    
     SPI1_Init(); // initializd SPI1
     UART2_Init(); // initialize UART2
     IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
@@ -400,7 +399,6 @@ int main(void) {
        
     initBuffer();
     
-    //char receivedChar;
     // STARTING THE LCD
     tmr_wait_ms(TIMER3,1000);
     
