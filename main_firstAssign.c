@@ -32,6 +32,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdbool.h>
+#include <p30F4011.h>
 
 #define FOSC 7372800.0 //Hz Clock breadboard
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
@@ -41,12 +42,27 @@
 #define TIMER4 4
 #define SIZE_OF_BUFFER 16
 
+void tmr_setup_period(int timer, int ms);
+void tmr_wait_period(int timer);
+void tmr_wait_ms(int timer, int ms);
 void UART2_Init();
 void SPI1_Init();
 void algorithm();
-void tmr_setup_period(int timer, int ms);
-void tmr_wait_period(int timer);
-void printFunctionFirstRow(char receivedChar);
+void initFunctionSecondRaw();
+void setCursorPositionFirstRaw(int position);
+void setCursorPositionSecondRaw();
+void cleaningFirstRaw();
+void printFunctionFirstRaw(char receivedChar);
+void printFunctionSecondRaw(char printed_value[]);
+void push(char receivedChar);
+void push_main(char receivedChar);
+void pull();
+void checkFlagsInterrupt();
+
+void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt();
+void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt();
+void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
+void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
 
 int number_readings = 0; // global variable for counting all the printed value
 int number_first_raw = 0; // global variable for counting the printed value on the first raw
@@ -109,10 +125,6 @@ void tmr_wait_period (int timer) {
         while(IFS1bits.T4IF == 0){
             // Wait until the flag is high -> The timer finished to count
         }
-        // CHECKING if the BOTTON is already pressed
-        if(PORTDbits.RD0 == 1){
-            flags_interrupts = 1;
-        }
     }
 }
 void tmr_wait_ms(int timer, int ms){
@@ -148,7 +160,7 @@ void UART2_Init() {
 }
 void initFunctionSecondRaw(){
     // Send a control command to set the cursor position
-    setCursorPositionSecondROw();
+    setCursorPositionSecondRaw();
     char initSecondRaw[11] = {'C','h', 'a', 'r' ,' ', 'R', 'e', 'c', 'v', ':', ' '}; //scrivo dal c10 o c11
     int i = 0;
     while(i<11){
@@ -159,7 +171,7 @@ void initFunctionSecondRaw(){
 }
 
 // SETTING CURSOR FUNCTIONS
-void setCursorPositionFirstROw(int position) {
+void setCursorPositionFirstRaw(int position) {
     // WAITING the CURSORs' moving
     IFS0bits.T3IF = 0; // Reset the flag
     T3CONbits.TON = 1; // Starts the timer
@@ -170,7 +182,7 @@ void setCursorPositionFirstROw(int position) {
     SPI1BUF = position;
      
 }
-void setCursorPositionSecondROw() {
+void setCursorPositionSecondRaw() {
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = 0xC0;
@@ -181,9 +193,9 @@ void setCursorPositionSecondROw() {
 }
 
 // PRINTING/CLEANING FUNCTIONS
-void cleaningFirstRow(){
+void cleaningFirstRaw(){
     char cleaner = ' ';
-    setCursorPositionFirstROw(0x80);
+    setCursorPositionFirstRaw(0x80);
     int i = 0;
     while(i<16){
         while(SPI1STATbits.SPITBF == 1);
@@ -192,27 +204,27 @@ void cleaningFirstRow(){
     }
 }
 
-void printFunctionFirstRow(char receivedChar){
+void printFunctionFirstRaw(char receivedChar){
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = receivedChar;
     number_first_raw++;
     
     if(receivedChar=='\r'||receivedChar=='\n'){
         //function to clean the first raw;
-        cleaningFirstRow();
+        cleaningFirstRaw();
         number_first_raw = 0;
-        setCursorPositionFirstROw(0x80);   
+        setCursorPositionFirstRaw(0x80);   
     }  
     
     if(number_first_raw==16){
         //clean first raw
-        cleaningFirstRow();
+        cleaningFirstRaw();
         number_first_raw = 0;
-        setCursorPositionFirstROw(0x80);
+        setCursorPositionFirstRaw(0x80);
     } 
 }
 
-void print_function(char printed_value[]){
+void printFunctionSecondRaw(char printed_value[]){
     // Send a control command to set the cursor position
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = 0xCA;
@@ -237,16 +249,16 @@ void print_function(char printed_value[]){
 void convertNumberToString(int count){ 
     // clean
     char clr[19] = {' ', ' ', ' ',' ', ' ', ' '};
-    print_function(clr); 
+    printFunctionSecondRaw(clr); 
     // read
     char str[10];
     sprintf(str, "%d", count);
-    print_function(str);
+    printFunctionSecondRaw(str);
 }
 
 // INTERRUPTS
-void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
-    
+void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
+    () {
     // Pulisci il flag dell'interrupt.
     IFS1bits.U2RXIF = 0;
     if(U2STAbits.URXDA == 1){
@@ -258,7 +270,6 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt(void) {
 
 void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
     (){
-    
     IFS0bits.INT0IF = 0; // reset interrupt flag
     IFS1bits.T4IF = 0; // Reset the flag
     T4CONbits.TON = 1; // Starts the timer
@@ -269,6 +280,16 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt
     (){
     IFS1bits.INT1IF = 0; // reset interrupt flag
     flags_interrupts = 2; 
+}
+
+void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt
+    (){
+    IFS0bits.T1IF = 0; // reset interrupt flag
+    // CHECKING if the BOTTON S5 is already pressed
+    if(PORTDbits.RD0 == 1){
+        flags_interrupts = 1;
+    }
+    
 }
 
 // CIRCULAR BUFFER
@@ -335,17 +356,15 @@ void pull(){
             {
                 cb.readIndex = 0;
             }
-            printFunctionFirstRow(receivedChar);
+            printFunctionFirstRaw(receivedChar);
             if (cb.bufferLength == 0 && U2STAbits.URXDA == 0) 
             {
                 convertNumberToString(number_readings);
-                setCursorPositionFirstROw(position_first_raw[number_first_raw]);
+                setCursorPositionFirstRaw(position_first_raw[number_first_raw]);
             }
 	    }
 	}
 }
-
-
 
 
 // INTERUPT FLAGS
@@ -356,11 +375,11 @@ void checkFlagsInterrupt(){
         flags_interrupts = 0;
     }
     if(flags_interrupts == 2){
-        cleaningFirstRow();
+        cleaningFirstRaw();
         number_readings = 0;
         number_first_raw = 0;
         convertNumberToString(number_readings); 
-        setCursorPositionFirstROw(0x80);
+        setCursorPositionFirstRaw(0x80);
         flags_interrupts = 0;
     }
     return;
@@ -382,16 +401,16 @@ int main(void) {
     tmr_wait_ms(TIMER3,1000);
     
     // SET the TIMERS
-    tmr_setup_period(TIMER1, 10); // Set the PR value and the prescaler (TIMER1 for allowing LCD to display values)
-    tmr_setup_period(TIMER2, 7); // Set the PR value and the prescaler (TIMER2 responsible of algorithm)
-    tmr_setup_period(TIMER4, 20);
+    tmr_setup_period(TIMER1, 20); // Timer for the control bouncing of the button S5
+    tmr_setup_period(TIMER2, 7); // Timer for the ALGORITHM
+    tmr_setup_period(TIMER4, 10); // Timer fo the wait period in the MAIN loop
     
     initFunctionSecondRaw();
     convertNumberToString(number_readings); 
     setCursorPositionFirstROw(0x80);
     // STARTING THE LCD
     tmr_wait_ms(TIMER3,1000);
-    tmr_setup_period(TIMER3, 1);
+    tmr_setup_period(TIMER3, 1); // Timer for moving the cursor from and to the first and second line of the LCD
    
     while (1) {
         algorithm();
