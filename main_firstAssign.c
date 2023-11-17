@@ -276,17 +276,21 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt
 void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt
     (){
     IFS0bits.INT0IF = 0; // reset interrupt flag 
+    IEC0bits.INT0IE = 0; // disable INT0 interrupt botton S5
+    IEC0bits.T1IE = 1; //enable T1IE interrupt
     IFS0bits.T1IF = 0; // Reset the flag
+    TMR1 = 0; // empty the Timer1 'counter' register
     T1CONbits.TON = 1; // Starts the timer
 }
 
 void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt
     (){
-    IEC0bits.INT0IE = 0; // disable INT0 interrupt botton S5
-    if(PORTDbits.RD0 == 1){       // CHECKING if the BOTTON S5 is already pressed
+    IFS0bits.T1IF = 0; // reset Interrupt flag 
+    IEC0bits.T1IE = 0;  // disable interrupt timer 1
+    IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
+    if(PORTEbits.RE8 == 1){       // CHECKING if the BOTTON S5 is already pressed
         flags_interrupts = 1;
-        IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
-    }
+    }    
 }
 
 // CIRCULAR BUFFER
@@ -304,23 +308,6 @@ void initBuffer(){
 }
 
 void push(char receivedChar){
-    if (cb.bufferLength == SIZE_OF_BUFFER)
-    {
-        //BUFFER FULL
-        return;
-    }
-    else{
-        cb.buffer[cb.writeIndex] = receivedChar;
-        cb.bufferLength++;
-        cb.writeIndex++;
-        if (cb.writeIndex == SIZE_OF_BUFFER) 
-        {
-            cb.writeIndex = 0;
-        }
-    }
-}
-
-void push_main(char receivedChar){
     if (cb.bufferLength == SIZE_OF_BUFFER)
     {
         //BUFFER FULL
@@ -394,8 +381,7 @@ int main(void) {
     TRISDbits.TRISD0 = 1; // set the button S5 as input
     TRISDbits.TRISD1 = 1; // set the button S6 as input
     IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
-    IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6
-    IEC0bits.T1IE = 1; //enable T1IE interrupt
+    IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6  
        
     initBuffer();
     
@@ -403,7 +389,7 @@ int main(void) {
     tmr_wait_ms(TIMER3,1000);
     
     // SET the TIMERS
-    tmr_setup_period(TIMER1, 20); // Timer for the control bouncing of the button S5
+    tmr_setup_period(TIMER1, 30); // Timer for the control bouncing of the button S5
     tmr_setup_period(TIMER2, 7); // Timer for the ALGORITHM
     tmr_setup_period(TIMER4, 10); // Timer fo the wait period in the MAIN loop
     
@@ -420,7 +406,7 @@ int main(void) {
             IEC1bits.U2RXIE = 0; // Disattiva l'interrupt per la ricezione UART2
             // Leggi il dato dal registro di ricezione UART2.
             char receivedData = U2RXREG;
-            push_main(receivedData);   
+            push(receivedData);   
             IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
         }
         // Check if there are characters in the buffer
