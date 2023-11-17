@@ -36,11 +36,11 @@
 
 #define FOSC 7372800.0                   // Hz Clock breadboard
 #define REG_SXT_BIT 65535.0              // MAX 16 bit register
-#define TIMER1 1
+#define TIMER1 1                         // We use 4 timers
 #define TIMER2 2
 #define TIMER3 3
 #define TIMER4 4
-#define SIZE_OF_BUFFER 16
+#define SIZE_OF_BUFFER 16                // Size of the circular buffer
 
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
@@ -55,22 +55,22 @@ void cleaningFirstRow();
 void printFunctionFirstRow(char receivedChar);
 void printFunctionSecondRow(char printed_value[]);
 void push(char receivedChar);
-void push_main(char receivedChar);
 void pull();
 void checkFlagsInterrupt();
-
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt();
 void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt();
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
 void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
 
+//GLOBAL VARIABLES
 int number_readings = 0;               // global variable for counting all the printed value
 int number_first_row = 0;              // global variable for counting the printed value on the first raw
 int position_first_row[16] = {0x80,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8A,0x8B,0x8C,0x8D,0x8E,0x8F};
-int flags_interrupts = 0;              // interrupt flag S5 and S6
+int flags_interrupts = 0;              // interrupt flag for buttons S5 and S6
 
 // TIMER FUNCTIONS
-void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
+void tmr_setup_period(int timer, int ms){
+    // Set the prescaler and the PR value
     // Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
     // this is too high to be put in a 16 bit register (max 65535)
     // If we set a prescaler of 1:8 we have 184320/8 = 23040 clock steps
@@ -132,35 +132,35 @@ void tmr_wait_period (int timer) {
 void tmr_wait_ms(int timer, int ms){
     tmr_setup_period(timer, ms);
     if (timer == TIMER3){
-        IFS0bits.T3IF = 0; // Reset the flag
-        T3CONbits.TON = 1; // Starts the timer
+        IFS0bits.T3IF = 0;                    // Reset the flag
+        T3CONbits.TON = 1;                    // Starts the timer
     }
     tmr_wait_period(timer);
 }
 
 void algorithm() {
-    IFS0bits.T2IF = 0; // Reset the flag TIMER 2
-    T2CONbits.TON = 1; // Starts the timer TIMER 2
+    IFS0bits.T2IF = 0;                        // Reset the flag TIMER 2
+    T2CONbits.TON = 1;                        // Starts the timer TIMER 2
     tmr_wait_period(TIMER2);
 }
 
 // INIT FUNCTIONS
 void SPI1_Init(){
     // Function to initialize the SPI
-    SPI1CONbits.MSTEN = 1;   // master mode
-    SPI1CONbits.MODE16 = 0;  // 8-bit mode
-    SPI1CONbits.PPRE = 3;    // 1:1 primary prescaler
-    SPI1CONbits.SPRE = 3;    // 5:1 secondary prescaler
-    SPI1STATbits.SPIEN = 1;  // enable SPI
+    SPI1CONbits.MSTEN = 1;                    // master mode
+    SPI1CONbits.MODE16 = 0;                   // 8-bit mode
+    SPI1CONbits.PPRE = 3;                     // 1:1 primary prescaler
+    SPI1CONbits.SPRE = 3;                     // 5:1 secondary prescaler
+    SPI1STATbits.SPIEN = 1;                   // enable SPI
 }
 void UART2_Init() {
     // Function to initialize the UART2
-    U2MODE = 0;              // Clear the mode register
-    U2STA = 0;               // Clear the status and control register
-    U2BRG = 11;              // Baud Rate Generator value for a specific baud rate 
+    U2MODE = 0;                               // Clear the mode register
+    U2STA = 0;                                // Clear the status and control register
+    U2BRG = 11;                               // Baud Rate Generator value for a specific baud rate 
     // (e.g., 9600 bps with a 7.3728 MHz clock, Fcy = 1.8432 MHz) || (7372800 / 4) / (16 * 9600) - 1
-    U2MODEbits.UARTEN = 1;   // Enable UART
-    U2STAbits.UTXEN = 1;     // Enable UART transmitter
+    U2MODEbits.UARTEN = 1;                    // Enable UART
+    U2STAbits.UTXEN = 1;                      // Enable UART transmitter
 }
 void initFunctionSecondRow(){
     // Function to initialize the second row: we print the 'Char Recv:' string and hold on it,
@@ -178,19 +178,19 @@ void initFunctionSecondRow(){
 // SETTING CURSOR FUNCTIONS
 void setCursorPositionFirstRow(int position) {
     // Function for setting the position of the cursor when we print on the first row
-    IFS0bits.T3IF = 0;               //  WAITING the CURSORs' moving and reset the flag
-    T3CONbits.TON = 1;               // Starts the timer
+    IFS0bits.T3IF = 0;                        // Waiting the cursor's moving and reset the flag
+    T3CONbits.TON = 1;                        // Starts the timer
     tmr_wait_period(TIMER3);
-    while(SPI1STATbits.SPITBF == 1); // Send a control command to set the cursor position
+    while(SPI1STATbits.SPITBF == 1);          // Send a control command to set the cursor position
     SPI1BUF = position;
      
 }
 void setCursorPositionSecondRow() {
     // Function for setting the position of the cursor when we print on the second row
-    while(SPI1STATbits.SPITBF == 1); // Send a control command to set the cursor position
+    while(SPI1STATbits.SPITBF == 1);          // Send a control command to set the cursor position
     SPI1BUF = 0xC0;
-    IFS0bits.T3IF = 0;               // WAITING the CURSORs' moving and Reset the flag
-    T3CONbits.TON = 1;               // Starts the timer
+    IFS0bits.T3IF = 0;                        // Waiting the cursor's moving and Reset the flag
+    T3CONbits.TON = 1;                        // Starts the timer
     tmr_wait_period(TIMER3); 
 }
 
@@ -212,12 +212,12 @@ void printFunctionFirstRow(char receivedChar){
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = receivedChar;
     number_first_row++;
-    if(receivedChar=='\r'||receivedChar=='\n'){  // If we get a special char, clean the first row
+    if(receivedChar=='\r'||receivedChar=='\n'){ // If we get a special char, clean the first row
         cleaningFirstRow();
         number_first_row = 0;
         setCursorPositionFirstRow(0x80);   
     }  
-    if(number_first_row==16){                    // If the first row is full, clean it
+    if(number_first_row==16){                   // If the first row is full, clean it
         cleaningFirstRow();
         number_first_row = 0;
         setCursorPositionFirstRow(0x80);
@@ -225,11 +225,12 @@ void printFunctionFirstRow(char receivedChar){
 }
 
 void printFunctionSecondRow(char printed_value[]){
-    // Function for printing the current number of received chars from UART2
+    // Function for printing the current number of received chars from UART2: 
+    // we print starting from the 0xCA position because we keep the 'Char Recv:' string before that
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = 0xCA;
-    IFS0bits.T3IF = 0;               // WAITING the CURSORs' moving and reset the flag
-    T3CONbits.TON = 1;               // Starts the timer
+    IFS0bits.T3IF = 0;                         // Waiting the cursor's moving and reset the flag
+    T3CONbits.TON = 1;                         // Starts the timer
     tmr_wait_period(TIMER3); 
     int i = 0;
      while(1){       
@@ -258,18 +259,17 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
     () {
     // Interrupt function of the UART2: when the buffer is full, execute it.
     // Read the buffer and push the data inside the circular buffer
-    IFS1bits.U2RXIF = 0;                // Reset the flag
-    if(U2STAbits.URXDA == 1){           // If there are data to be read
-        char receivedData = U2RXREG;    // Read
-        push(receivedData);             // Push
+    IFS1bits.U2RXIF = 0;                          // Reset the flag
+    if(U2STAbits.URXDA == 1){                     // If there are data to be read
+        char receivedData = U2RXREG;              // Read
+        push(receivedData);                       // Push
     }    
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt
     (){
-    IFS1bits.INT1IF = 0; // reset interrupt flag
+    // Interrupt function of the S6 button: simply set the flag interrupt so we'll do the corresponding operations 
+    IFS1bits.INT1IF = 0;                          // reset interrupt flag
     flags_interrupts = 2; 
 }
 
@@ -295,14 +295,18 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt
 
 // CIRCULAR BUFFER
 struct circular_buffer {
-    char buffer[SIZE_OF_BUFFER]; // size buffer
-    int bufferLength;        // writeIndex - readIndex
+    // Struct that contains only the usefull information that we need from the buffer
+    char buffer[SIZE_OF_BUFFER];                // Buffer
+    int bufferLength;                           // Different from the SIZE_OF_BUFFER, it's 'writeIndex - readIndex', the number of bytes that we still have to read
     int readIndex;
     int writeIndex;
 };
-struct circular_buffer cb;
+
+struct circular_buffer cb;                      // Our circular buffer
+
 void initBuffer(){
-    cb.bufferLength = 0; // writeIndex - readIndex
+    // Function to initialize the circular buffer
+    cb.bufferLength = 0;
     cb.readIndex = 0;
     cb.writeIndex = 0;
 }
@@ -381,7 +385,8 @@ int main(void) {
     TRISDbits.TRISD0 = 1; // set the button S5 as input
     TRISDbits.TRISD1 = 1; // set the button S6 as input
     IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
-    IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6  
+    IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6
+    IEC0bits.T1IE = 1; //enable T1IE interrupt
        
     initBuffer();
     
@@ -389,7 +394,7 @@ int main(void) {
     tmr_wait_ms(TIMER3,1000);
     
     // SET the TIMERS
-    tmr_setup_period(TIMER1, 30); // Timer for the control bouncing of the button S5
+    tmr_setup_period(TIMER1, 20); // Timer for the control bouncing of the button S5
     tmr_setup_period(TIMER2, 7); // Timer for the ALGORITHM
     tmr_setup_period(TIMER4, 10); // Timer fo the wait period in the MAIN loop
     
