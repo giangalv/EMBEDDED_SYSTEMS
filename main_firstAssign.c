@@ -1,6 +1,11 @@
-// DSPIC30F4011 Configuration Bit Settings
-// 'C' source line config statements
-// FOSC
+/*
+ * Claudio Demaria s5433737
+ * Gianluca Galvagni s5521188
+ * 
+ * DSPIC30F4011 Configuration Bit Settings
+ * 'C' source line config statements
+ * FOSC
+ */ 
 #pragma config FPR = XT                   // Primary Oscillator Mode (XT)
 #pragma config FOS = PRI                  // Oscillator Source (Primary Oscillator)
 #pragma config FCKSMEN = CSW_FSCM_OFF     // Clock Switching and Monitor (Sw Disabled, Mon Disabled)
@@ -65,15 +70,17 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
 //GLOBAL VARIABLES
 int number_readings = 0;               // global variable for counting all the printed value
 int number_first_row = 0;              // global variable for counting the printed value on the first raw
-int position_first_row[16] = {0x80,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8A,0x8B,0x8C,0x8D,0x8E,0x8F};
+int position_first_row[16] = {0x80,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8A,0x8B,0x8C,0x8D,0x8E,0x8F}; // indices for the LCD's second row
 int flags_interrupts = 0;              // interrupt flag for buttons S5 and S6
 
 // TIMER FUNCTIONS
 void tmr_setup_period(int timer, int ms){
-    // Set the prescaler and the PR value
-    // Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
-    // this is too high to be put in a 16 bit register (max 65535)
-    // If we set a prescaler of 1:8 we have 184320/8 = 23040 clock steps
+    /*
+     * Set the prescaler and the PR value:
+     * Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
+     * this is too high to be put in a 16 bit register (max 65535).
+     * If we set a prescaler of 1:8 we have 184320/8 = 23040 clock steps.
+     */ 
     double Fcy = FOSC / 4.0;
     double clock_steps = Fcy * (ms/1000.0);
     int count = 0;
@@ -163,8 +170,10 @@ void UART2_Init() {
     U2STAbits.UTXEN = 1;                      // Enable UART transmitter
 }
 void initFunctionSecondRow(){
-    // Function to initialize the second row: we print the 'Char Recv:' string and hold on it,
-    // so we'll only print the updated current number of readings from UART2
+    /*
+     * Function to initialize the second row: we print the 'Char Recv:' string and hold on it,
+     * so we'll only print the updated current number of readings from UART2
+     */ 
     setCursorPositionSecondRow();
     char initSecondRaw[11] = {'C','h', 'a', 'r' ,' ', 'R', 'e', 'c', 'v', ':', ' '}; //scrivo dal c10 o c11
     int i = 0;
@@ -225,8 +234,10 @@ void printFunctionFirstRow(char receivedChar){
 }
 
 void printFunctionSecondRow(char printed_value[]){
-    // Function for printing the current number of received chars from UART2: 
-    // we print starting from the 0xCA position because we keep the 'Char Recv:' string before that
+    /*
+     * Function for printing the current number of received chars from UART2:
+     * we print starting from the 0xCA position because we keep the 'Char Recv:' string before that.
+     */  
     while(SPI1STATbits.SPITBF == 1);
     SPI1BUF = 0xCA;
     IFS0bits.T3IF = 0;                         // Waiting the cursor's moving and reset the flag
@@ -245,8 +256,10 @@ void printFunctionSecondRow(char printed_value[]){
 }
 
 void convertNumberToString(int count){ 
-    // Function for converting an integer (the count of the number of received chars from UART2) in a char 
-    // and then print it on the second row
+    /*
+     * Function for converting an integer (the count of the number of received chars from UART2) in a char 
+     * and then print it on the second row
+     */  
     char clr[19] = {' ', ' ', ' ',' ', ' ', ' '}; // Clean the positions where we'll print
     printFunctionSecondRow(clr); 
     char str[10];
@@ -257,8 +270,10 @@ void convertNumberToString(int count){
 // INTERRUPTS
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
     () {
-    // Interrupt function of the UART2: when the buffer is full, execute it.
-    // Read the buffer and push the data inside the circular buffer
+    /*
+     * Interrupt function of the UART2: when the buffer is full, execute it.
+     * Read the buffer and push the data inside the circular buffer
+     */ 
     IFS1bits.U2RXIF = 0;                          // Reset the flag
     if(U2STAbits.URXDA == 1){                     // If there are data to be read
         char receivedData = U2RXREG;              // Read
@@ -312,6 +327,11 @@ void initBuffer(){
 }
 
 void push(char receivedChar){
+    /*
+     * It push the caracters received from the UART into the circular buffer
+     * in order to write. 
+     * If the circular buffer goes in overflow the characters will lose.     
+     */
     if (cb.bufferLength == SIZE_OF_BUFFER)
     {
         //BUFFER FULL
@@ -329,6 +349,12 @@ void push(char receivedChar){
 }
 
 void pull(){
+    /*
+     * It take out all characters from the circular buffer and send to the 'printFunctionFirstRow',
+     * which will print it.
+     * When the circula buffer is free and the UART is not sending characters, the 'convertNumberToString'
+     * write on the second row of the LCD the number of charachters printed.
+     */
 	while (cb.bufferLength > 0){
 	    if (cb.bufferLength == 0) 
 	    {
@@ -354,9 +380,13 @@ void pull(){
 	}
 }
 
-
 // INTERUPT FLAGS
 void checkFlagsInterrupt(){
+    /*
+    * It manages interrupt flags, the flag = 1 sends the number of charachters received 
+    * to the UART, the flag = 2 clears the LCD 's first row and set to zero the 
+    * number of charachters received.  
+    */
     if(flags_interrupts == 1){
         while (U2STAbits.UTXBF);  // Wait for the transmit buffer to be empty
         U2TXREG = number_readings;  // Send the number of chars received
@@ -373,55 +403,44 @@ void checkFlagsInterrupt(){
     return;
 }
 
-int main(void) {
-    TRISBbits.TRISB0 = 0; // set the pin B02 as output
-    LATBbits.LATB0 = 0; // set the pin low
+// MAIN FUNCTION
+int main(void) {   
+    SPI1_Init();            // initializd SPI1
+    UART2_Init();           // initialize UART2
+    IEC1bits.U2RXIE = 1;    // Abilita l'interrupt per la ricezione UART2
+    U2STAbits.URXISEL = 3;  // Set URXISEL to 11
+    TRISDbits.TRISD0 = 1;   // set the button S5 as input
+    TRISDbits.TRISD1 = 1;   // set the button S6 as input
+    IEC0bits.INT0IE = 1;   // enable INT0 interrupt botton S5
+    IEC1bits.INT1IE = 1;   //enable INT0 interrupt botton S6
+    IEC0bits.T1IE = 1;     //enable T1IE interrupt
     
-    
-    SPI1_Init(); // initializd SPI1
-    UART2_Init(); // initialize UART2
-    IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
-    U2STAbits.URXISEL = 3; // Set URXISEL to 11
-    TRISDbits.TRISD0 = 1; // set the button S5 as input
-    TRISDbits.TRISD1 = 1; // set the button S6 as input
-    IEC0bits.INT0IE = 1; // enable INT0 interrupt botton S5
-    IEC1bits.INT1IE = 1; //enable INT0 interrupt botton S6
-    IEC0bits.T1IE = 1; //enable T1IE interrupt
-       
     initBuffer();
-    
-    // STARTING THE LCD
-    tmr_wait_ms(TIMER3,1000);
-    
+   
     // SET the TIMERS
     tmr_setup_period(TIMER1, 20); // Timer for the control bouncing of the button S5
     tmr_setup_period(TIMER2, 7); // Timer for the ALGORITHM
     tmr_setup_period(TIMER4, 10); // Timer fo the wait period in the MAIN loop
     
+    // STARTING THE LCD
+    tmr_wait_ms(TIMER3,1000);
+    tmr_setup_period(TIMER3, 1);       // Timer for moving the cursor from and to the first and second line of the LCD
     initFunctionSecondRow();
     convertNumberToString(number_readings); 
     setCursorPositionFirstRow(0x80);
-    // STARTING THE LCD
-    tmr_wait_ms(TIMER3,1000);
-    tmr_setup_period(TIMER3, 1); // Timer for moving the cursor from and to the first and second line of the LCD
-   
+    
     while (1) {
         algorithm();
         if(U2STAbits.URXDA == 1){   
-            IEC1bits.U2RXIE = 0; // Disattiva l'interrupt per la ricezione UART2
-            // Leggi il dato dal registro di ricezione UART2.
-            char receivedData = U2RXREG;
+            IEC1bits.U2RXIE = 0;         // disable the interrupt for the UART received
+            char receivedData = U2RXREG; // read from the UART
             push(receivedData);   
-            IEC1bits.U2RXIE = 1; // Abilita l'interrupt per la ricezione UART2
+            IEC1bits.U2RXIE = 1;        // enable the UART 's interrupt
         }
-        // Check if there are characters in the buffer
-        pull();
-        
-        // Check the interrupts flag
-        checkFlagsInterrupt();
-        
-        IFS1bits.T4IF = 0; // Reset the flag
-        T4CONbits.TON = 1; // Starts the timer
+        pull();                         // Check if there are characters in the buffer
+        checkFlagsInterrupt();          // Check the interrupts flag
+        IFS1bits.T4IF = 0;              // Reset the flag
+        T4CONbits.TON = 1;              // Starts the timer
         tmr_wait_period(TIMER4);
     }
 }
