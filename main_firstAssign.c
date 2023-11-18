@@ -138,23 +138,12 @@ void tmr_wait_period (int timer) {
     }
 }
 
-void tmr_wait_ms(int timer, int ms) {
+void tmr_wait_ms(int timer, int ms){
     tmr_setup_period(timer, ms);
-
-    // Start the timer based on the specified timer number
-    switch (timer) {
-        case TIMER3:
-            IFS0bits.T3IF = 0;  // Reset TIMER3 interrupt flag
-            T3CONbits.TON = 1;  // Start TIMER3
-            break;
-        // Add cases for other timers if needed
-
-        // Default case for unsupported timers
-        default:
-            // Handle unsupported timer case, if necessary
-            break;
+    if (timer == TIMER3){
+        IFS0bits.T3IF = 0;   // Reset the flag
+        T3CONbits.TON = 1;   // Starts the timer
     }
-
     tmr_wait_period(timer);
 }
 
@@ -201,7 +190,7 @@ void initFunctionSecondRow() {
 
     int i = 0;
     while (i < 11) {
-        while (SPI1STATbits.SPITBF == 1);  // Wait until the SPI transmit buffer is not full
+        while (SPI1STATbits.SPITBF == 1); // Wait until the SPI transmit buffer is not full
         SPI1BUF = initSecondRow[i];       // Transmit the character to SPI buffer
         i++;
     }
@@ -222,7 +211,7 @@ void setCursorPositionFirstRow(int position) {
 void setCursorPositionSecondRow() {
     // Function for setting the position of the cursor when printing on the second row
 
-    while(SPI1STATbits.SPITBF == 1);  // Wait until the SPI transmit buffer is not full
+    while(SPI1STATbits.SPITBF == 1);   // Wait until the SPI transmit buffer is not full
     SPI1BUF = 0xC0;                    // Send a control command to set the cursor position
 
     IFS0bits.T3IF = 0;                 // Wait for the cursor's movement and reset the flag
@@ -239,7 +228,7 @@ void cleaningFirstRow() {
 
     int i = 0;
     while (i < 16) {
-        while (SPI1STATbits.SPITBF == 1);   // Wait until the SPI transmit buffer is not full
+        while (SPI1STATbits.SPITBF == 1);  // Wait until the SPI transmit buffer is not full
         SPI1BUF = cleaner;                 // Send the cleaner character to clear the display
         i++;
     }
@@ -276,20 +265,19 @@ void printFunctionSecondRow(char printed_value[]) {
     while (SPI1STATbits.SPITBF == 1);
     SPI1BUF = 0xCA;
 
-    IFS0bits.T3IF = 0;  // Wait for the cursor to move and reset the flag
-    T3CONbits.TON = 1;  // Start the timer
+    IFS0bits.T3IF = 0;        // Wait for the cursor to move and reset the flag
+    T3CONbits.TON = 1;        // Start the timer
     tmr_wait_period(TIMER3);  // Wait for a specific period (assuming tmr_wait_period is defined elsewhere)
 
     int i = 0;
     while (1) {
-        while (SPI1STATbits.SPITBF == 1);
+        while(SPI1STATbits.SPITBF == 1);
         SPI1BUF = printed_value[i];
-
-        // Check if the end of the string is reached
-        if (printed_value[i] == '\0') {
+        int end = strlen(printed_value)-1;
+        if (i==end){
             return;
         }
-        i++;
+        i++; 
     }
 }
 
@@ -324,7 +312,7 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt(){
     /*
      * Interrupt function for the S6 button: Sets the interrupt flag to trigger corresponding operations.
      */ 
-    IFS1bits.INT1IF = 0;  // Reset INT1 interrupt flag
+    IFS1bits.INT1IF = 0;   // Reset INT1 interrupt flag
     flags_interrupts = 2;  // Set the interrupt flag value
 }
 
@@ -442,7 +430,7 @@ void checkFlagsInterrupt() {
      */
 
     if (flags_interrupts == 1) {
-        while (U2STAbits.UTXBF);  // Wait for the transmit buffer to be empty
+        while (U2STAbits.UTXBF);    // Wait for the transmit buffer to be empty
         U2TXREG = number_readings;  // Send the number of characters received
         flags_interrupts = 0;
     }
@@ -495,14 +483,14 @@ int main(void) {
             IEC1bits.U2RXIE = 0;         // Disable interrupt for UART2 reception
             char receivedData = U2RXREG; // Read from UART2
             push(receivedData);   
-            IEC1bits.U2RXIE = 1;        // Enable UART2 reception interrupt
+            IEC1bits.U2RXIE = 1;         // Enable UART2 reception interrupt
         }
         
-        pull();                         // Check if there are characters in the buffer
-        checkFlagsInterrupt();          // Check the interrupt flags
+        pull();                          // Check if there are characters in the buffer
+        checkFlagsInterrupt();           // Check the interrupt flags
         
-        IFS1bits.T4IF = 0;              // Reset Timer4 interrupt flag
-        T4CONbits.TON = 1;              // Start Timer4
+        IFS1bits.T4IF = 0;               // Reset Timer4 interrupt flag
+        T4CONbits.TON = 1;               // Start Timer4
         tmr_wait_period(TIMER4);
     }
 }
