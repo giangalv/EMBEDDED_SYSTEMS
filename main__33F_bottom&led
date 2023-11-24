@@ -1,6 +1,6 @@
 #include "xc.h"
 
-#define FOSC 8000000.0 //Hz Clock breadboard or 8
+#define FOSC 144000000.0 //Hz Clock breadboard or 8
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
 #define TIMER1 1
 #define TIMER2 2
@@ -31,7 +31,7 @@ void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
         TMR1 = 0.0; // Reset the timer
         PR1 = clock_steps; // Set the desired count value
         T1CONbits.TCKPS = count; // set PRESCALER
-        T1CONbits.TCS = 0;
+        //T1CONbits.TCS = 0;
     }
     if (timer == TIMER2){
         TMR2 = 0.0;
@@ -84,34 +84,28 @@ int on_off_led(int ledValue){
 }
 
 int main(void){
-    PLLFBD = 6; //M=8
-    CLKDIVbits.PLLPOST = 0x00; //N1=2
-    CLKDIVbits.PLLPRE = 0x00; //N2=2
-    RCONbits.SWDTEN = 0; //DISABLE Watch Dog Timer
-    while(OSCCONbits.LOCK !=1){
-    }; //Wait for PLL to lock
+    ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //mandatory
     
-    tmr_setup_period(TIMER1, 500);
+    tmr_setup_period(TIMER1, 100);
 
-    TRISEbits.TRISE0 = 1; // set the pin E8 as input
+    TRISEbits.TRISE8 = 1; // set the pin E8 as input
     TRISAbits.TRISA0 = 0; // set the PIN A0 as output
 
     ledValue = 0;
     pinValue = 1;
 
-    /*LED PULSE
-      while (1)   
-    {
+    //LED PULSE
+    while(1){
         ledValue = on_off_led(ledValue);
         IFS0bits.T1IF = 0; // Reset the flag
         T1CONbits.TON = 1; // Starts the timer
         tmr_wait_period(TIMER1);   
     }
-    */
     
+    //LED ON-OFF with the BUTTOM
     while(1){
-        pinValue = PORTEbits.RE0;
-        if(pinValue == 1){
+        pinValue = PORTEbits.RE8;
+        if(pinValue == 0){
             ledValue = on_off_led(ledValue);   
         }     
     }
