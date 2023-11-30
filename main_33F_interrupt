@@ -1,20 +1,28 @@
+/*
+ * File:   main.c
+ * Author: dema
+ *
+ * Created on 30 November 2023, 12:14
+ */
+
+#include <p33EP512MU810.h>
+
 #include "xc.h"
+#include <stdbool.h>
 
 #define FOSC 144000000.0 //Hz Clock breadboard or 8
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
 #define TIMER1 1
 #define TIMER2 2
 #define TIMER3 3
-#define LED1 1
-#define LED2 2
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
 void tmr_wait_ms(int timer, int ms);
-int on_off_led(int ledValue, int ledNumber);
+int on_off_led(int ledValue);
 
-int led1Value;
-int led2Value;
-int interruptFlag;
+int ledValue;
+int interrupt1Flag;
+int mode;
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
@@ -83,8 +91,8 @@ void tmr_wait_ms(int timer, int ms){
     tmr_wait_period(timer);
 }
 
-int on_off_led(int ledValue, int ledNumber){
-    if (ledNumber == 1){
+int on_off_led(int ledValue){
+    if(mode == 1){
         if(ledValue == 0){
             LATAbits.LATA0 = 1;
             return 1;
@@ -94,7 +102,7 @@ int on_off_led(int ledValue, int ledNumber){
             return 0;
         }
     }
-    else if(ledNumber == 2){
+    else if(mode == 2){
         if(ledValue == 0){
             LATGbits.LATG9 = 1;
             return 1;
@@ -104,21 +112,31 @@ int on_off_led(int ledValue, int ledNumber){
             return 0;
         }
     }
-    
 }
 
-void __attribute__((interrupt__, __auto_psv__)) _T1Interrupt
+void __attribute__((interrupt__, __auto_psv__)) _INT1Interrupt
     (){
-    IFS0bits.T1IF = 0; // Reset the flag
-    
-    if (interruptFlag == 0){
-        interruptFlag = 1;
-    }    
+    IFS1bits.INT1IF = 0; //reset interrupt flag
+    if(mode == 0){
+        mode = 1;
+    }
     else{
-        interruptFlag = 0;
-        T1CONbits.TON = 1; // Starts the timer
+        mode = 0;
     }
-    }
+    LATAbits.LATA0 = 0;
+    LATGbits.LATG9 = 0;
+}
+
+void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
+    /*
+     * Timer1 (T1) interrupt function: Resets the Timer1 interrupt flag,
+     * disables Timer1 interrupt (T1IE), enables INT0 interrupt for button S5,
+     * and checks if button S5 is already pressed, updating the interrupt flag accordingly.
+     */ 
+    ledValue = on_off_led(ledValue);
+    IFS0bits.T1IF = 0; // Reset the flag
+    T1CONbits.TON = 1; // Starts the timer
+}
 
 int main(void) {
     ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //mandatory
@@ -129,26 +147,33 @@ int main(void) {
     IFS1bits.INT1IF = 0; // clear interrupt flag
     IEC1bits.INT1IE = 1; //enable INT1 interrupt
     
-    IEC0bits.T1IE = 1;      // Enable Timer1 (T1IE) interrupt
-    TRISAbits.TRISA0 = 0; // set the PIN A0 as output LED1
-    TRISGbits.TRISG9 = 0; // set the PIN G9 as output LED2
-    led1Value = 0;
-    led2Value = 0;
-    interruptFlag = 0;
+    IEC0bits.T1IE = 1; //enable T1 interrupt    
+    TRISAbits.TRISA0 = 0; // set the PIN A0 as output
+    TRISGbits.TRISG9 = 0; // set the PIN A0 as output
+    ledValue = 0;
+    bool start = true;
+    //interrupt1Flag = 0;
+    mode = 1;
     
-    tmr_setup_period(TIMER1, 500); 
-    IFS0bits.T1IF = 0; // Reset the flag
-    T1CONbits.TON = 1; // Starts the timer
+    tmr_setup_period(TIMER1, 500);
+    tmr_setup_period(TIMER2, 250);
     
-    while(1){       
-        if(interruptFlag == 0){
-           led1Value = on_off_led(led1Value,LED1);
-           tmr_wait_ms(TIMER2,250);
+    while(1){
+        if(mode == 1){
+            if(start == false){
+                start = true;
+            }
+            ledValue = on_off_led(ledValue);
+            IFS0bits.T1IF = 0; // Reset the flag
+            T1CONbits.TON = 1; // Starts the timer
+            tmr_wait_period(TIMER1); 
         }
-        else{
-            led2Value = on_off_led(led2Value,LED2);
-            tmr_wait_ms(TIMER2,100);
-        }         
+        else if(mode == 2){
+            if(start == true){
+                T1CONbits.TON = 1; // Starts the timer
+                start = false;
+            }
+        } 
     }
     return 0;
 }
