@@ -11,7 +11,7 @@ void tmr_wait_ms(int timer, int ms);
 int on_off_led(int ledValue);
 
 int ledValue;
-int pinValue;
+int interrupt1Flag;
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
@@ -94,7 +94,7 @@ int on_off_led(int ledValue){
 void __attribute__((interrupt__, __auto_psv__)) _INT1Interrupt
     (){
     IFS1bits.INT1IF = 0; //reset interrupt flag
-    
+    interrupt1Flag = 1;    
     }
 
 int main(void) {
@@ -108,8 +108,24 @@ int main(void) {
     
     TRISAbits.TRISA0 = 0; // set the PIN A0 as output
     ledValue = 0;
+    interrupt1Flag = 0;
+    
+    tmr_setup_period(TIMER1, 500);
+    tmr_setup_period(TIMER2, 250);
     
     while(1){
+        if(interrupt1Flag == 0){
+           ledValue = on_off_led(ledValue);
+            IFS0bits.T1IF = 0; // Reset the flag
+            T1CONbits.TON = 1; // Starts the timer
+            tmr_wait_period(TIMER1); 
+        }
+        else{
+            ledValue = on_off_led(ledValue);
+            IFS0bits.T2IF = 0; // Reset the flag
+            T2CONbits.TON = 1; // Starts the timer
+            tmr_wait_period(TIMER2);
+        }    
         
     }
     return 0;
