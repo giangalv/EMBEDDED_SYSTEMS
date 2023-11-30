@@ -1,0 +1,107 @@
+#include "xc.h"
+
+#define FOSC 144000000.0 //Hz Clock breadboard or 8
+#define REG_SXT_BIT 65535.0 // MAX 16 bit register
+#define TIMER1 1
+#define TIMER2 2
+#define TIMER3 3
+void tmr_setup_period(int timer, int ms);
+void tmr_wait_period(int timer);
+void tmr_wait_ms(int timer, int ms);
+int on_off_led(int ledValue);
+
+int ledValue;
+int pinValue;
+
+void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
+// Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
+// this is too high to be put in a 16 bit register (max 65535)
+// If we set a prescaler of 1:8 we have 184320/8 = 23040 clock steps
+    double Fcy = FOSC / 2.0;
+    double clock_steps = Fcy * (ms/1000.0);
+    int count = 0;
+    if (clock_steps > REG_SXT_BIT){
+        double prescaler_value[3] = {8.0,8.0,4.0};
+        while(clock_steps > REG_SXT_BIT){
+            clock_steps = clock_steps/prescaler_value[count];
+            count +=1;           
+        }
+    }
+    if (timer == TIMER1){
+        TMR1 = 0.0; // Reset the timer
+        PR1 = clock_steps; // Set the desired count value
+        T1CONbits.TCKPS = count; // set PRESCALER
+        //T1CONbits.TCS = 0;
+    }
+    if (timer == TIMER2){
+        TMR2 = 0.0;
+        PR2 = clock_steps; 
+        T2CONbits.TCKPS = count; // set PRESCALER
+    }
+    if (timer == TIMER3){
+        TMR3 = 0.0;
+        PR3 = clock_steps; 
+        T3CONbits.TCKPS = count; // set PRESCALER
+    }
+}
+
+void tmr_wait_period (int timer) {
+    if (timer == TIMER1){
+        while(IFS0bits.T1IF == 0){
+        // Wait until the flag is high -> The timer finished to count
+        }
+    }
+    if (timer == TIMER2){ 
+      while(IFS0bits.T2IF == 0){
+        // Wait until the flag is high -> The timer finished to count
+        }  
+    }
+    if (timer == TIMER3){ 
+      while(IFS0bits.T3IF == 0){
+        // Wait until the flag is high -> The timer finished to count
+        }  
+    }
+}
+
+void tmr_wait_ms(int timer, int ms){
+    tmr_setup_period(timer, ms);
+    if (timer == TIMER1){
+        IFS0bits.T1IF = 0; // Reset the flag
+        T1CONbits.TON = 1; // Starts the timer
+    }
+    if (timer == TIMER2){ // CONTROLLARE T2
+        IFS0bits.T2IF = 0; // Reset the flag
+        T2CONbits.TON = 1; // Starts the timer
+    }
+    if (timer == TIMER3){ // CONTROLLARE T2
+        IFS0bits.T3IF = 0; // Reset the flag
+        T3CONbits.TON = 1; // Starts the timer
+    }
+    tmr_wait_period(timer);
+}
+
+int on_off_led(int ledValue){
+    if(ledValue == 0){
+        LATAbits.LATA0 = 1;
+        return 1;
+    }
+    else{
+        LATAbits.LATA0 = 0;
+        return 0;
+    }
+}
+
+void __attribute__((interrupt__, __auto_psv__)) _INT0Interrupt
+    (){
+    IFS0bits.INT0IF = 0; //reset interrupt flag
+    
+    }
+
+int main(void) {
+    IEC0bits.INT0IE = 1; //enable INT0 interrupt
+    
+    while(1){
+        
+    }
+    return 0;
+}
