@@ -5,13 +5,16 @@
 #define TIMER1 1
 #define TIMER2 2
 #define TIMER3 3
+#define LED1 1
+#define LED2 2
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
 void tmr_wait_ms(int timer, int ms);
-int on_off_led(int ledValue);
+int on_off_led(int ledValue, int ledNumber);
 
-int ledValue;
-int interrupt1Flag;
+int led1Value;
+int led2Value;
+int interruptFlag;
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
@@ -80,21 +83,41 @@ void tmr_wait_ms(int timer, int ms){
     tmr_wait_period(timer);
 }
 
-int on_off_led(int ledValue){
-    if(ledValue == 0){
-        LATAbits.LATA0 = 1;
-        return 1;
+int on_off_led(int ledValue, int ledNumber){
+    if (ledNumber == 1){
+        if(ledValue == 0){
+            LATAbits.LATA0 = 1;
+            return 1;
+        }
+        else{
+            LATAbits.LATA0 = 0;
+            return 0;
+        }
     }
-    else{
-        LATAbits.LATA0 = 0;
-        return 0;
+    else if(ledNumber == 2){
+        if(ledValue == 0){
+            LATGbits.LATG9 = 1;
+            return 1;
+        }
+        else{
+            LATGbits.LATG9 = 0;
+            return 0;
+        }
     }
+    
 }
 
-void __attribute__((interrupt__, __auto_psv__)) _INT1Interrupt
+void __attribute__((interrupt__, __auto_psv__)) _T1Interrupt
     (){
-    IFS1bits.INT1IF = 0; //reset interrupt flag
-    interrupt1Flag = 1;    
+    IFS0bits.T1IF = 0; // Reset the flag
+    
+    if (interruptFlag == 0){
+        interruptFlag = 1;
+    }    
+    else{
+        interruptFlag = 0;
+        T1CONbits.TON = 1; // Starts the timer
+    }
     }
 
 int main(void) {
@@ -106,27 +129,26 @@ int main(void) {
     IFS1bits.INT1IF = 0; // clear interrupt flag
     IEC1bits.INT1IE = 1; //enable INT1 interrupt
     
-    TRISAbits.TRISA0 = 0; // set the PIN A0 as output
-    ledValue = 0;
-    interrupt1Flag = 0;
+    IEC0bits.T1IE = 1;      // Enable Timer1 (T1IE) interrupt
+    TRISAbits.TRISA0 = 0; // set the PIN A0 as output LED1
+    TRISGbits.TRISG9 = 0; // set the PIN G9 as output LED2
+    led1Value = 0;
+    led2Value = 0;
+    interruptFlag = 0;
     
-    tmr_setup_period(TIMER1, 500);
-    tmr_setup_period(TIMER2, 250);
+    tmr_setup_period(TIMER1, 500); 
+    IFS0bits.T1IF = 0; // Reset the flag
+    T1CONbits.TON = 1; // Starts the timer
     
-    while(1){
-        if(interrupt1Flag == 0){
-           ledValue = on_off_led(ledValue);
-            IFS0bits.T1IF = 0; // Reset the flag
-            T1CONbits.TON = 1; // Starts the timer
-            tmr_wait_period(TIMER1); 
+    while(1){       
+        if(interruptFlag == 0){
+           led1Value = on_off_led(led1Value,LED1);
+           tmr_wait_ms(TIMER2,250);
         }
         else{
-            ledValue = on_off_led(ledValue);
-            IFS0bits.T2IF = 0; // Reset the flag
-            T2CONbits.TON = 1; // Starts the timer
-            tmr_wait_period(TIMER2);
-        }    
-        
+            led2Value = on_off_led(led2Value,LED2);
+            tmr_wait_ms(TIMER2,100);
+        }         
     }
     return 0;
 }
