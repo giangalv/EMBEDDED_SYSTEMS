@@ -91,14 +91,23 @@ int on_off_led(int ledValue){
     }
 }
 
-void __attribute__((interrupt__, __auto_psv__)) _INT0Interrupt
+void __attribute__((interrupt__, __auto_psv__)) _INT1Interrupt
     (){
-    IFS0bits.INT0IF = 0; //reset interrupt flag
+    IFS1bits.INT1IF = 0; //reset interrupt flag
     
     }
 
 int main(void) {
-    IEC0bits.INT0IE = 1; //enable INT0 interrupt
+    ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //mandatory
+    // INTERRUPT SET UP
+    RPINR0bits.INT1R = 0x59; // 0x59 is 88 in hex
+    INTCON2bits.GIE = 1; // set global interrupt enable
+    INTCON2bits.INT1EP = 1; // interrupt on negatuve edge
+    IFS1bits.INT1IF = 0; // clear interrupt flag
+    IEC1bits.INT1IE = 1; //enable INT1 interrupt
+    
+    TRISAbits.TRISA0 = 0; // set the PIN A0 as output
+    ledValue = 0;
     
     while(1){
         
