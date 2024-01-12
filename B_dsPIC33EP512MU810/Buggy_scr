@@ -26,6 +26,12 @@ int PWMfreqMAX; // 10kHz
 int motionMode; // 0 = stop, 1 = forward, 2 = backward, 3 = turn left, 4 = turn right, 5 = rotate left, 6 = rotate right
 int maxVelocityValue; // 50% of the PWM duty cycle
 
+// ADC
+float y; // perceived distance
+float battery; // battery voltage
+int sg; // surge
+int yr; // yaw rate
+
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
 // this is too high to be put in a 16 bit register (max 65535)
@@ -222,6 +228,52 @@ void setup_motion(int motionMode){
     }
 }
 
+// Surge and Yaw Rate generation:
+// We were required to generate 2 signals, respectively surge and yaw_rate, with values ranging 
+// from 0 to 100. The functions we produced for this task, respectively named surge and yaw_rate,
+// do just that, but with values ranging from 0 to 80 depending on the comparison between the 
+// perceived distance sensed by the ADC and the minth and maxth thresholds. We decided to limit
+// the maximum value generated to 80 for our logic just because we found that at full speed the
+// robot would be too fast sometimes to avoid collisions while moving forward. So, we decided to 
+// limit the maximum speed to 80% as a compromise (apart from the rotation, which needs to be a 
+// bit higher otherwise the robot will have difficulty turning on the spot). 
+
+int surge(float dist, volatile threshold_data* sdata){ //WORKS
+    float MAXTH = (float) 0.01*sdata->maxth; // int to float conversion (cm to m)
+    float MINTH = (float) 0.01*sdata->minth;
+    if (dist >= MAXTH){
+        return 80; // full forward velocity
+    }
+    else if (dist > MINTH && dist < MAXTH){
+        // If the difference between the maxth threshold and the current distance is low,
+        // return an higher surge value (up to 80), otherwise return a lower surge value (up to 0).
+        int sr = (int) 100*MAXTH - (int) 100*dist;
+        if (sr <= 0){ return 80; } else if (sr >= 80){ return 0; } else{ return 80-sr; }
+        
+    }
+    else{
+        return 0; //don't go forward
+    }
+}
+
+int yaw_rate(float dist, volatile threshold_data* sdata){
+    float MAXTH = (float) 0.01*sdata->maxth; // int to float conversion (cm to m)
+    float MINTH = (float) 0.01*sdata->minth;
+    if (dist <= MINTH){
+        return 80; // full turn
+    }
+    else if (dist > MINTH && dist < MAXTH){
+        // If the difference between the current distance and the minth threshold is low,
+        // return an higher yaw rate value (up to 80), otherwise return a lower yaw rate value (up to 0).
+        int yaw = 80 - ((int) 100*dist - (int) 100*MINTH);
+        if (yaw <= 0){ return 0; } else if (yaw >= 80){ return 80; } else{ return yaw; }
+        
+    }
+    else{
+        return 0; //don't turn
+    }
+}
+
 int main(void){
     ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
 
@@ -247,7 +299,7 @@ int main(void){
     LATAbits.LATA0 = 0; // Set pin RA0 as LOW
     LATGbits.LATG9 = 0; // Set pin RG9 as LOW
 
-    // Configuration for timer interrupts
+    // Configuration for timer interrupts for the button E8
     tmr_setup_period(TIMER1, 100); // set the timer to press the button E8 for 100ms and then stop the motion
     IEC0bits.T1IE = 1; // Enable Timer1 (T1IE) interrupt
 
@@ -277,8 +329,80 @@ int main(void){
     OC4RS = maxVelocityValue; // Set the duty cycle to 50%
     motionMode = 0; // STOP
 
+    // Configuration for ADC 
+    AD1CON1bits.ADON = 1; // Enable the ADC
+    AD1CON3bits.ADCS = 14; // Select how long is the TAD, timing for the ADC, as a function of Fcy (TAD = TCY*(ADCS+1) = 15*15 = 225ns)
+    // set auto sample time bits
+    AD1CON1bits.ASAM = 0; // Sampling begins when SAMP bit is set
+    AD1CON1bits.SSRC = 7; // Internal counter ends sampling and starts conversion (auto-convert)
+    AD1CON3bits.SAMC = 16; // Auto-sample time bits, how long the sampling time is (16*TAD = 3.6us)
+    // set channel scan bits
+    AD1CON2bits.CHPS = 0; // Converts CH0
+    AD1CON1bits.SIMSAM = 0; // Samples multiple channels individually in sequence
+    // IR sensor configuration AN14
+    TRISBbits.TRISB14 = 1; // Set pin RB14 as input
+    ANSELBbits.ANSB14 = 1; // Set pin RB14 as analog input
+    // Battery sensor configuration AN11
+    TRISBbits.TRISB11 = 1; // Set pin RB11 as input
+    ANSELBbits.ANSB11 = 1; // Set pin RB11 as analog input
+    // IR distance sensor enable line
+    TRISBbits.TRISB9 = 0; // Set pin RB9 as output
+    LATBbits.LATB9 = 1; // Set pin RB9 as HIGH
+    // Scan configuration
+    AD1CON2bits.CSCNA = 1; // Scan inputs
+    AD1CSSLbits.CSS14 = 1; // Enable AN14 for scan
+    AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan
+    AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
+
+
     while (1)
     {
+        // ADC sampling
+        do {
+        if (AD1CON1bits.SAMP == 0)
+            AD1CON1bits.SAMP = 1; // trigger the sampling
+        } while (!AD1CON1bits.DONE);
+        // We calculate the current perceived distance and battery voltage
+        float V = (float) ADC1BUF1*(3.3 - 0)/1024;
+        y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4); 
+        battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024; // The times 3 is because of the resistor partitioning 
+        
+        // State-dependent Tasks:
+        switch (current_state) {
+            case WAIT_FOR_START:
+                
+                LATFbits.LATF0 = 0; 
+                LATGbits.LATG1 = 0; 
+                LATAbits.LATA7 = 0;
+                OC2R  = 0;
+                OC4R  = 0; 
+                OC1R  = 0; 
+                OC3R  = 0;
+                dutyCycle1 = 0;
+                dutyCycle2 = 0;
+                dutyCycle3 = 0;
+                dutyCycle4 = 0;
+                
+                break;
+                
+            case MOVING:
+                LATAbits.LATA0 = 1;
+                
+                sg = surge(y,&sdata); 
+                yr = yaw_rate(y,&sdata);
+
+                if (sg >= 50){
+                    LATFbits.LATF0 = 0; LATGbits.LATG1 = 0; LATAbits.LATA7 = 1;
+                }
+                else{
+                    LATFbits.LATF0 = 1; LATGbits.LATG1 = 1; LATAbits.LATA7 = 0;
+                }
+
+                pwm(&sg,&yr,&dutyCycle1,&dutyCycle2,&dutyCycle3,&dutyCycle4);
+                
+                break;
+        }
+
         setup_motion(motionMode);
         LATAbits.LATA0 = !LATAbits.LATA0; // Toggle the led
         tmr_wait_ms(TIMER2, 100); // Wait 100ms
