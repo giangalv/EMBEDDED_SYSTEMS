@@ -17,8 +17,14 @@ int on_off_led(int ledValue);
 
 int ledValue;
 int pinValue;
+// PWM
 int PWMfreqMAX; // 10kHz
 int motionMode; // 0 = stop, 1 = forward, 2 = backward, 3 = turn left, 4 = turn right, 5 = rotate left, 6 = rotate right
+int OC1R; // PWM duty cycle for left motor
+int OC2R; // PWM duty cycle for right motor
+int OC3R; // PWM duty cycle for left motor
+int OC4R; // PWM duty cycle for right motor
+int maxVelocityValue; // 50% of the PWM duty cycle
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
@@ -125,22 +131,152 @@ void tmr_wait_ms(int timer, int ms){
     tmr_wait_period(timer);
 }
 
+void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt(){
+    /*
+     * Interrupt function for button S5 (INT0): Resets the INT0 interrupt flag,
+     * disables INT0 interrupt (INT0IE), disables Timer1 interrupt (T1IE),
+     * and checks if button S5 is pressed. If it is pressed, it stops the motion.
+     */ 
+    IFS0bits.INT0IF = 0;    // Reset INT0 interrupt flag 
+    IEC0bits.INT0IE = 0;    // Disable INT0 interrupt for button S5
+    IEC0bits.T1IE = 1;      // Enable Timer1 (T1IE) interrupt
+    IFS0bits.T1IF = 0;      // Reset Timer1 interrupt flag
+    TMR1 = 0;               // Clear Timer1 'counter' register
+    T1CONbits.TON = 1;      // Start Timer1
+}
+
+void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
+    /*
+     * Timer1 (T1) interrupt function: Resets the Timer1 interrupt flag,
+     * disables Timer1 interrupt (T1IE), enables INT0 interrupt for button S5,
+     * and checks if button S5 is pressed. If it is pressed, it stops the motion.
+     */ 
+    IFS0bits.T1IF = 0;      // Reset Timer1 interrupt flag 
+    IEC0bits.T1IE = 0;      // Disable Timer1 interrupt
+    IFS0bits.INT0IF = 0;    // Reset INT0 interrupt flag
+    IEC0bits.INT0IE = 1;    // Enable INT0 interrupt for button S5
+
+    // Check if button S5 is already pressed
+    if(PORTEbits.RE8 == 0){
+        motionMode = 0; // Stop
+        setup_motion(motionMode);
+    }
+}
+
+int setup_motion(int motionMode){
+    // Set the fin for a 10kHz PWM control
+    // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
+    int maxVel = maxVelocityValue * 0.5; // 50% of the max velocity
+    int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
+    switch (motionMode) {
+        case 0: // 0 = stop;
+            OC2R = 0; // Calculating Duty Cycle
+            OC4R = 0; // Calculating Duty Cycle
+            OC1R = 0; // Calculating Duty Cycle
+            OC3R = 0; // Calculating Duty Cycle
+            break;
+
+        case 1: // 1 = fw;
+            OC2R = maxVel; // Calculating Duty Cycle
+            OC4R = maxVel; // Calculating Duty Cycle
+            OC1R = 0;     // Calculating Duty Cycle
+            OC3R = 0;     // Calculating Duty Cycle
+            break;
+
+        case 2: // 2 = bw;
+            OC2R = 0;     // Calculating Duty Cycle
+            OC4R = 0;     // Calculating Duty Cycle
+            OC1R = maxVel; // Calculating Duty Cycle
+            OC3R = maxVel; // Calculating Duty Cycle
+            break;
+
+        case 3: // 3 = tr;
+            OC2R = maxVel; // Calculating Duty Cycle
+            OC4R = minVel;   // Calculating Duty Cycle
+            OC1R = 0;     // Calculating Duty Cycle
+            OC3R = 0;     // Calculating Duty Cycle
+            break;
+
+        case 4: // 4 = tl;
+            OC2R = minVel;   // Calculating Duty Cycle
+            OC4R = maxVel; // Calculating Duty Cycle
+            OC1R = 0;     // Calculating Duty Cycle
+            OC3R = 0;     // Calculating Duty Cycle
+            break;
+
+        case 5: // 5 = rl;
+            OC2R = maxVel; // Calculating Duty Cycle
+            OC4R = 0;     // Calculating Duty Cycle
+            OC1R = 0;     // Calculating Duty Cycle
+            OC3R = maxVel; // Calculating Duty Cycle
+            break;
+        
+        case 6: // 6 = rr;
+            OC2R = 0;     // Calculating Duty Cycle
+            OC4R = maxVel; // Calculating Duty Cycle
+            OC1R = maxVel; // Calculating Duty Cycle
+            OC3R = 0;     // Calculating Duty Cycle
+            break;
+    }
+}
+
 int main(void){
     ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
 
-    
+    // Pin configuration for the buttons
+    RPINR0bits.INT1R = 0x58 ; // Set pin RP24 as INT1 (button E8)
+    RPINR1bits.INT2R = 0x59 ; // Set pin RP25 as INT2 (button E9)
+    INTCON2bits.GIE = 1; // Enable global interrupt
+    INTCON2bits.INT1EP = 1; // Set INT1 interrupt on falling edge
+    INTCON2bits.INT2EP = 1; // Set INT2 interrupt on falling edge
+    // Button E8 and E9 configuration
+    TRISEbits.TRISE8 = 1; // Set pin RE8 as input
+    TRISEbits.TRISE9 = 1; // Set pin RE9 as input   
+    // Buttons Interrupt configuration
+    IFS1bits.INT1IF = 0; // Reset INT1 interrupt flag
+    IFS1bits.INT2IF = 0; // Reset INT2 interrupt flag
+    // eneable INT1 and INT2 interrupts for E8 and E9 buttons
+    IEC1bits.INT1IE = 1; // Enable INT1 interrupt for button E8
+    IEC1bits.INT2IE = 1; // Enable INT2 interrupt for button E9
+
+    // Configuration for the leds
+    TRISAbits.TRISA0 = 0; // Set pin RA0 as output
+    TRISGbits.TRISG9 = 0; // Set pin RG9 as output
+    LATAbits.LATA0 = 0; // Set pin RA0 as LOW
+    LATGbits.LATG9 = 0; // Set pin RG9 as LOW
+
+    // Configuration for timer interrupts
+    tmr_setup_period(TIMER1, 500); // set the timer to press the button S5 for 500ms and then stop the motion
+    IEC0bits.T1IE = 1; // Enable Timer1 (T1IE) interrupt
+
+    // Configuration for the PWM
+    PTCONbits.PTEN = 1; // Enable the PWM
+    // Set the input clock source for the OCx module
+    OC1CONbits.OCTSEL = 7; // Use the peripheral clock (PWM frequency = 10kHz) instead of the timer2 (default)
+    OC2COnbits.OCTSEL = 7; 
+    OC3CONbits.OCTSEL = 7;
+    OC4CONbits.OCTSEL = 7;
+    // Set the OCx module to operate timer output compare mode
+    OC1CONbits.OCM = 6; // PWM mode on OC1; Fault pin disabled
+    OC2CONbits.OCM = 6; 
+    OC3CONbits.OCM = 6;
+    OC4CONbits.OCM = 6;
+    // Set the OCx module synchronization source to the peripheral timer
+    OC1CONbits.SYNCSEL = 0x1F; // Use the peripheral clock (maxVelocityValue) instead of the timer2 (default)
+    OC2CONbits.SYNCSEL = 0x1F;
+    OC3CONbits.SYNCSEL = 0x1F;
+    OC4CONbits.SYNCSEL = 0x1F;
     // Set pin for the CONTROL of the MOTORS
     PROR0bits.RP65R = 0x010; // Set pin RP65 as OC1 (PWM)
     PROR0bits.RP66R = 0x011; // Set pin RP66 as OC2 (PWM)
     PROR0bits.RP67R = 0x012; // Set pin RP67 as OC3 (PWM)
     PROR0bits.RP68R = 0x013; // Set pin RP68 as OC4 (PWM)
-
-    // Set the fin for a 10kHz PWM control
-    // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
-    OC1RS = 7200; // Set the duty cycle to 50%
-    OC2RS = 7200; // Set the duty cycle to 50%
-    OC3RS = 7200; // Set the duty cycle to 50%
-    OC4RS = 7200; // Set the duty cycle to 50%
+    // Set the PWM frequency from 0 to 10000Hz
+    maxVelocityValue = 7200; // 50% of the PWM duty cycle
+    OC1RS = maxVelocityValue; // Set the duty cycle to 50%
+    OC2RS = maxVelocityValue; // Set the duty cycle to 50%
+    OC3RS = maxVelocityValue; // Set the duty cycle to 50%
+    OC4RS = maxVelocityValue; // Set the duty cycle to 50%
 
 
 }
