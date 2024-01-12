@@ -1,4 +1,7 @@
 #include "xc.h"
+#include "math.h"
+#include "stdio.h"
+#include "stdlib.h"
 
 #define FOSC 144000000.0 //Hz Clock breadboard
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
@@ -14,11 +17,22 @@ int on_off_led(int ledValue);
 
 int ledValue;
 int pinValue;
+int PWMfreqMAX; // 10kHz
+int motionMode; // 0 = stop, 1 = forward, 2 = backward, 3 = turn left, 4 = turn right, 5 = rotate left, 6 = rotate right
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
-// Fosc = 737280 Hz -> Fcy = Fosc / 4 = 184320 number of clocks in one second so in 0.1 secon there would be 184320 clocks steps
+// Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
 // this is too high to be put in a 16 bit register (max 65535)
-// If we set a prescaler of 1:8 we have 184320/8 = 23040 clock steps
+// we set the millisec value and the max value for that breadboard is more or less 0.582 (<582ms) seconds
+// If we set ms = 500 we have 144000000/2 * 500/1000 = 36000000 clock steps
+// this is too high to be put in a 16 bit register (max 65535)
+// If we set a prescaler of 1:8 we have 36000000/8 = 4500000 clock steps
+// this is too high to be put in a 16 bit register (max 65535)
+// If then we set a prescaler of 1:64 we have 36000000/64 = 562500 clock steps
+// this is too high to be put in a 16 bit register (max 65535)
+// If then we set a prescaler of 1:256 we have 36000000/256 = 140625 clock steps
+// this is ok to be put in a 16 bit register (max 65535)
+
     double Fcy = FOSC / 2.0;
     double clock_steps = Fcy * (ms/1000.0);
     int count = 0;
@@ -38,22 +52,22 @@ void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
     if (timer == TIMER2){
         TMR2 = 0.0;
         PR2 = clock_steps; 
-        T2CONbits.TCKPS = count; // set PRESCALER
+        T2CONbits.TCKPS = count; 
     }
     if (timer == TIMER3){
         TMR3 = 0.0;
         PR3 = clock_steps; 
-        T3CONbits.TCKPS = count; // set PRESCALER
+        T3CONbits.TCKPS = count; 
     }
     if (timer == TIMER4){
         TMR4 = 0.0;
         PR4 = clock_steps; 
-        T4CONbits.TCKPS = count; // set PRESCALER
+        T4CONbits.TCKPS = count; 
     }
     if (timer == TIMER5){
         TMR5 = 0.0;
         PR5 = clock_steps; 
-        T5CONbits.TCKPS = count; // set PRESCALER
+        T5CONbits.TCKPS = count; 
     }
 }
 
@@ -114,6 +128,7 @@ void tmr_wait_ms(int timer, int ms){
 int main(void){
     ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
 
+    
     // Set pin for the CONTROL of the MOTORS
     PROR0bits.RP65R = 0x010; // Set pin RP65 as OC1 (PWM)
     PROR0bits.RP66R = 0x011; // Set pin RP66 as OC2 (PWM)
@@ -122,10 +137,10 @@ int main(void){
 
     // Set the fin for a 10kHz PWM control
     // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
-    // at 40% duty cycle the wheels don't move
     OC1RS = 7200; // Set the duty cycle to 50%
     OC2RS = 7200; // Set the duty cycle to 50%
     OC3RS = 7200; // Set the duty cycle to 50%
     OC4RS = 7200; // Set the duty cycle to 50%
+
 
 }
