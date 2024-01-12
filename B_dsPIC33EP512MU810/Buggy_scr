@@ -14,16 +14,17 @@ void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
 void tmr_wait_ms(int timer, int ms);
 int on_off_led(int ledValue);
+int setup_motion(int motionMode);
 
 int ledValue;
 int pinValue;
 // PWM
 int PWMfreqMAX; // 10kHz
 int motionMode; // 0 = stop, 1 = forward, 2 = backward, 3 = turn left, 4 = turn right, 5 = rotate left, 6 = rotate right
-int OC1R; // PWM duty cycle for left motor
-int OC2R; // PWM duty cycle for right motor
-int OC3R; // PWM duty cycle for left motor
-int OC4R; // PWM duty cycle for right motor
+//int OC1R; // PWM duty cycle for left motor
+//int OC2R; // PWM duty cycle for right motor
+//int OC3R; // PWM duty cycle for left motor
+//int OC4R; // PWM duty cycle for right motor
 int maxVelocityValue; // 50% of the PWM duty cycle
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
@@ -159,7 +160,6 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
     // Check if button S5 is already pressed
     if(PORTEbits.RE8 == 0){
         motionMode = 0; // Stop
-        setup_motion(motionMode);
     }
 }
 
@@ -252,31 +252,36 @@ int main(void){
     // Configuration for the PWM
     PTCONbits.PTEN = 1; // Enable the PWM
     // Set the input clock source for the OCx module
-    OC1CONbits.OCTSEL = 7; // Use the peripheral clock (PWM frequency = 10kHz) instead of the timer2 (default)
-    OC2COnbits.OCTSEL = 7; 
-    OC3CONbits.OCTSEL = 7;
-    OC4CONbits.OCTSEL = 7;
     // Set the OCx module to operate timer output compare mode
-    OC1CONbits.OCM = 6; // PWM mode on OC1; Fault pin disabled
-    OC2CONbits.OCM = 6; 
-    OC3CONbits.OCM = 6;
-    OC4CONbits.OCM = 6;
+    OC1CON1bits.OCM = 6; // PWM mode on OC1; Fault pin disabled
+    OC2CON1bits.OCM = 6; 
+    OC3CON1bits.OCM = 6;
+    OC4CON1bits.OCM = 6;
     // Set the OCx module synchronization source to the peripheral timer
-    OC1CONbits.SYNCSEL = 0x1F; // Use the peripheral clock (maxVelocityValue) instead of the timer2 (default)
-    OC2CONbits.SYNCSEL = 0x1F;
-    OC3CONbits.SYNCSEL = 0x1F;
-    OC4CONbits.SYNCSEL = 0x1F;
+    OC1CON2bits.SYNCSEL = 0x1F; // Use the peripheral clock (maxVelocityValue) instead of the timer2 (default)
+    OC2CON2bits.SYNCSEL = 0x1F;
+    OC3CON2bits.SYNCSEL = 0x1F;
+    OC4CON2bits.SYNCSEL = 0x1F;
     // Set pin for the CONTROL of the MOTORS
-    PROR0bits.RP65R = 0x010; // Set pin RP65 as OC1 (PWM)
-    PROR0bits.RP66R = 0x011; // Set pin RP66 as OC2 (PWM)
-    PROR0bits.RP67R = 0x012; // Set pin RP67 as OC3 (PWM)
-    PROR0bits.RP68R = 0x013; // Set pin RP68 as OC4 (PWM)
+    RPOR0bits.RP65R = 0x010; // Set pin RP65 as OC1 (PWM)
+    RPOR1bits.RP66R = 0x011; // Set pin RP66 as OC2 (PWM)
+    RPOR1bits.RP67R = 0x012; // Set pin RP67 as OC3 (PWM)
+    RPOR2bits.RP68R = 0x013; // Set pin RP68 as OC4 (PWM)
     // Set the PWM frequency from 0 to 10000Hz
     maxVelocityValue = 7200; // 50% of the PWM duty cycle
     OC1RS = maxVelocityValue; // Set the duty cycle to 50%
     OC2RS = maxVelocityValue; // Set the duty cycle to 50%
     OC3RS = maxVelocityValue; // Set the duty cycle to 50%
     OC4RS = maxVelocityValue; // Set the duty cycle to 50%
+    motionMode = 1; // 1 = fw;
 
 
+    
+    while (1)
+    {
+        setup_motion(motionMode);
+        LATAbits.LATA0 = 1; // Set pin RA0 as HIGH
+        tmr_wait_ms(TIMER2, 100); // Wait 100ms
+    }
+    return 0;
 }
