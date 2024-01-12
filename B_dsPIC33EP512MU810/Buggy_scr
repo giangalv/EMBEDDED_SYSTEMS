@@ -10,21 +10,20 @@
 #define TIMER3 3
 #define TIMER4 4
 #define TIMER5 5
+// Function prototypes
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
 void tmr_wait_ms(int timer, int ms);
 int on_off_led(int ledValue);
-int setup_motion(int motionMode);
+void setup_motion(int motionMode);
 
-int ledValue;
-int pinValue;
+// interrupt functions
+void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
+void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
+
 // PWM
 int PWMfreqMAX; // 10kHz
 int motionMode; // 0 = stop, 1 = forward, 2 = backward, 3 = turn left, 4 = turn right, 5 = rotate left, 6 = rotate right
-//int OC1R; // PWM duty cycle for left motor
-//int OC2R; // PWM duty cycle for right motor
-//int OC3R; // PWM duty cycle for left motor
-//int OC4R; // PWM duty cycle for right motor
 int maxVelocityValue; // 50% of the PWM duty cycle
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
@@ -132,14 +131,14 @@ void tmr_wait_ms(int timer, int ms){
     tmr_wait_period(timer);
 }
 
-void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt(){
+void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt(){
     /*
-     * Interrupt function for button S5 (INT0): Resets the INT0 interrupt flag,
-     * disables INT0 interrupt (INT0IE), disables Timer1 interrupt (T1IE),
-     * and checks if button S5 is pressed. If it is pressed, it stops the motion.
+     * Interrupt function for button E8 (INT1): Resets the interrupt flag, 
+     * disables INT1 interrupt, enables Timer1 (T1IE) interrupt, resets T1IF flag,
+     * clears Timer1 register, and starts Timer1.
      */ 
-    IFS0bits.INT0IF = 0;    // Reset INT0 interrupt flag 
-    IEC0bits.INT0IE = 0;    // Disable INT0 interrupt for button S5
+    IFS1bits.INT1IF = 0;    // Reset INT1 interrupt flag 
+    IEC1bits.INT1IE = 0;    // Disable INT1 interrupt for button S5
     IEC0bits.T1IE = 1;      // Enable Timer1 (T1IE) interrupt
     IFS0bits.T1IF = 0;      // Reset Timer1 interrupt flag
     TMR1 = 0;               // Clear Timer1 'counter' register
@@ -149,73 +148,76 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT0Interrupt(){
 void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
     /*
      * Timer1 (T1) interrupt function: Resets the Timer1 interrupt flag,
-     * disables Timer1 interrupt (T1IE), enables INT0 interrupt for button S5,
-     * and checks if button S5 is pressed. If it is pressed, it stops the motion.
+     * disables Timer1 interrupt (T1IE), enables INT1 interrupt for button E8,
+     * and checks if button E8 is pressed. If it is pressed, it stops the motion.
      */ 
     IFS0bits.T1IF = 0;      // Reset Timer1 interrupt flag 
     IEC0bits.T1IE = 0;      // Disable Timer1 interrupt
-    IFS0bits.INT0IF = 0;    // Reset INT0 interrupt flag
-    IEC0bits.INT0IE = 1;    // Enable INT0 interrupt for button S5
+    IFS1bits.INT1IF = 0;    // Reset INT1 interrupt flag
+    IEC1bits.INT1IE = 1;    // Enable INT1 interrupt for button S5
 
-    // Check if button S5 is already pressed
+    // Check if button E8 is already pressed
     if(PORTEbits.RE8 == 0){
-        motionMode = 0; // Stop
+        motionMode = motionMode + 1;
+        if (motionMode > 6){
+            motionMode = 0;
+        }
     }
 }
 
-int setup_motion(int motionMode){
+void setup_motion(int motionMode){
     // Set the fin for a 10kHz PWM control
     // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
     int maxVel = maxVelocityValue * 0.5; // 50% of the max velocity
     int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
     switch (motionMode) {
         case 0: // 0 = stop;
-            OC2R = 0; // Calculating Duty Cycle
-            OC4R = 0; // Calculating Duty Cycle
-            OC1R = 0; // Calculating Duty Cycle
-            OC3R = 0; // Calculating Duty Cycle
+            OC2R = 0; // PWM duty cycle for left motor CLOCKWISE rotation
+            OC4R = 0; // PWM duty cycle for right motor CLOCKWISE rotation
+            OC1R = 0; // PWM duty cycle for left motor COUNTERCLOCKWISE rotation
+            OC3R = 0; // PWM duty cycle for right motor COUNTERCLOCKWISE rotation
             break;
 
         case 1: // 1 = fw;
-            OC2R = maxVel; // Calculating Duty Cycle
-            OC4R = maxVel; // Calculating Duty Cycle
-            OC1R = 0;     // Calculating Duty Cycle
-            OC3R = 0;     // Calculating Duty Cycle
+            OC2R = maxVel; 
+            OC4R = maxVel; 
+            OC1R = 0;     
+            OC3R = 0;     
             break;
 
         case 2: // 2 = bw;
-            OC2R = 0;     // Calculating Duty Cycle
-            OC4R = 0;     // Calculating Duty Cycle
-            OC1R = maxVel; // Calculating Duty Cycle
-            OC3R = maxVel; // Calculating Duty Cycle
+            OC2R = 0;     
+            OC4R = 0;     
+            OC1R = maxVel; 
+            OC3R = maxVel; 
             break;
 
         case 3: // 3 = tr;
-            OC2R = maxVel; // Calculating Duty Cycle
-            OC4R = minVel;   // Calculating Duty Cycle
-            OC1R = 0;     // Calculating Duty Cycle
-            OC3R = 0;     // Calculating Duty Cycle
+            OC2R = maxVel; 
+            OC4R = minVel;   
+            OC1R = 0;     
+            OC3R = 0;     
             break;
 
         case 4: // 4 = tl;
-            OC2R = minVel;   // Calculating Duty Cycle
-            OC4R = maxVel; // Calculating Duty Cycle
-            OC1R = 0;     // Calculating Duty Cycle
-            OC3R = 0;     // Calculating Duty Cycle
+            OC2R = minVel;   
+            OC4R = maxVel; 
+            OC1R = 0;     
+            OC3R = 0;     
             break;
 
         case 5: // 5 = rl;
-            OC2R = maxVel; // Calculating Duty Cycle
-            OC4R = 0;     // Calculating Duty Cycle
-            OC1R = 0;     // Calculating Duty Cycle
-            OC3R = maxVel; // Calculating Duty Cycle
+            OC2R = maxVel; 
+            OC4R = 0;     
+            OC1R = 0;     
+            OC3R = maxVel; 
             break;
         
         case 6: // 6 = rr;
-            OC2R = 0;     // Calculating Duty Cycle
-            OC4R = maxVel; // Calculating Duty Cycle
-            OC1R = maxVel; // Calculating Duty Cycle
-            OC3R = 0;     // Calculating Duty Cycle
+            OC2R = 0;     
+            OC4R = maxVel; 
+            OC1R = maxVel; 
+            OC3R = 0;     
             break;
     }
 }
@@ -225,19 +227,19 @@ int main(void){
 
     // Pin configuration for the buttons
     RPINR0bits.INT1R = 0x58 ; // Set pin RP24 as INT1 (button E8)
-    RPINR1bits.INT2R = 0x59 ; // Set pin RP25 as INT2 (button E9)
+    //RPINR1bits.INT2R = 0x59 ; // Set pin RP25 as INT2 (button E9)
     INTCON2bits.GIE = 1; // Enable global interrupt
     INTCON2bits.INT1EP = 1; // Set INT1 interrupt on falling edge
-    INTCON2bits.INT2EP = 1; // Set INT2 interrupt on falling edge
+    //INTCON2bits.INT2EP = 1; // Set INT2 interrupt on falling edge
     // Button E8 and E9 configuration
     TRISEbits.TRISE8 = 1; // Set pin RE8 as input
-    TRISEbits.TRISE9 = 1; // Set pin RE9 as input   
+    //TRISEbits.TRISE9 = 1; // Set pin RE9 as input   
     // Buttons Interrupt configuration
     IFS1bits.INT1IF = 0; // Reset INT1 interrupt flag
-    IFS1bits.INT2IF = 0; // Reset INT2 interrupt flag
+    //IFS1bits.INT2IF = 0; // Reset INT2 interrupt flag
     // eneable INT1 and INT2 interrupts for E8 and E9 buttons
     IEC1bits.INT1IE = 1; // Enable INT1 interrupt for button E8
-    IEC1bits.INT2IE = 1; // Enable INT2 interrupt for button E9
+    //IEC1bits.INT2IE = 1; // Enable INT2 interrupt for button E9
 
     // Configuration for the leds
     TRISAbits.TRISA0 = 0; // Set pin RA0 as output
@@ -246,7 +248,7 @@ int main(void){
     LATGbits.LATG9 = 0; // Set pin RG9 as LOW
 
     // Configuration for timer interrupts
-    tmr_setup_period(TIMER1, 500); // set the timer to press the button S5 for 500ms and then stop the motion
+    tmr_setup_period(TIMER1, 100); // set the timer to press the button E8 for 100ms and then stop the motion
     IEC0bits.T1IE = 1; // Enable Timer1 (T1IE) interrupt
 
     // Configuration for the PWM
@@ -273,14 +275,12 @@ int main(void){
     OC2RS = maxVelocityValue; // Set the duty cycle to 50%
     OC3RS = maxVelocityValue; // Set the duty cycle to 50%
     OC4RS = maxVelocityValue; // Set the duty cycle to 50%
-    motionMode = 1; // 1 = fw;
+    motionMode = 0; // STOP
 
-
-    
     while (1)
     {
         setup_motion(motionMode);
-        LATAbits.LATA0 = 1; // Set pin RA0 as HIGH
+        LATAbits.LATA0 = !LATAbits.LATA0; // Toggle the led
         tmr_wait_ms(TIMER2, 100); // Wait 100ms
     }
     return 0;
