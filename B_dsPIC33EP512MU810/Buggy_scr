@@ -247,7 +247,74 @@ float acquisitionADC(){
     */
 }
 
+float surge_yawRate(float y){
+    float MIN = 0.14;
+    float MAX = 0.6;
+    if (y < MIN){
+        sg = 0;
+        yr = 80;
+    }
+    else if (y > MAX){
+        sg = 80;
+        yr = 0;
+    }
+    else{
+        sg = (int) (80*(y-MIN)/(MAX-MIN));
+        yr = (int) (80*(MAX-y)/(MAX-MIN));
+    }
+    return sg, yr;
+}
 
+void pwm(int * sg, int * yr){
+    
+    int sum = *sg + *yr; if (sum >= 100){ sum = 100; } //this sum can't be negative, so we don't check the -100 bound
+    int sub = *sg - *yr; if (sub <= -80){ sub = -80; } //this sum can either be negative or positive from 0 to 80 so we don't check the 100 bound
+    // We reasoned like this because when we turn, we don't want the velocity of the right wheels to be higher than that of the left
+    // wheels: we only ever need to turn right, after all.
+    
+    left_pwm1;
+    left_pwm2;
+    right_pwm1;
+    right_pwm2;
+
+    if (*yr >= 80){ //full turn
+        left_pwm1 = 5760;
+        left_pwm2 = 0;
+        right_pwm1 = 0;
+        right_pwm2 = 5760;
+    }
+    else if(*yr > 15 && *yr < 80){ 
+        if (sub >=0){ //turn right
+            left_pwm1 = sum*72;
+            left_pwm2 = 0;
+            right_pwm1 = sub*72;
+            right_pwm2 = 0;
+        }
+        else{ //turn on the spot
+            left_pwm1 = sum*72;
+            left_pwm2 = 0;
+            right_pwm1 = 0;
+            right_pwm2 = 5760+sub*72; //sub will be negative, and always between -80 and 0, so this value will always be positive
+        }
+    }
+    else if(*yr >= 0 && *yr <= 15){ //full forward
+        left_pwm1 = 4320;
+        left_pwm2 = 0;
+        right_pwm1 = 4320;
+        right_pwm2 = 0;
+    }
+    else{ //an error occurred: stop
+        left_pwm1 = 0;
+        left_pwm2 = 0;
+        right_pwm1 = 0;
+        right_pwm2 = 0;
+    }
+    
+    OC2R  = left_pwm1;
+    OC1R  = left_pwm2;
+    OC4R  = right_pwm1;
+    OC3R  = right_pwm2;
+}
 
 int main(void){
     ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
@@ -334,17 +401,19 @@ int main(void){
     {
         //ADC
         y = acquisitionADC();
-        
+        /*
         if (y < 0.6){
             LATGbits.LATG9 = 1; // Set pin RG9 as HIGH
         }
         else{
             LATGbits.LATG9 = 0; // Set pin RG9 as LOW
         }      
-
+        */
+        sg, yr = surge_yawRate(y);
+        pwm(&sg, &yr);
 
         // PWM
-        setup_motion(motionMode);
+        //setup_motion(motionMode);
         LATAbits.LATA0 = !LATAbits.LATA0; // Toggle the led
         tmr_wait_ms(TIMER2, 100); // Wait 100ms
     }
