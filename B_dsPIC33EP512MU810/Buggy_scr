@@ -15,18 +15,19 @@ void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
 void tmr_wait_ms(int timer, int ms);
 int on_off_led(int ledValue);
-void setup_motion(int motionMode);
 
 // interrupt functions
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
 void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
 
 // PWM
+void setup_motion(int motionMode);
 int PWMfreqMAX; // 10kHz
 int motionMode; // 0 = stop, 1 = forward, 2 = backward, 3 = turn left, 4 = turn right, 5 = rotate left, 6 = rotate right
 int maxVelocityValue; // 50% of the PWM duty cycle
 
 // ADC
+float acquisitionADC();
 float y; // perceived distance
 float battery; // battery voltage
 int sg; // surge
@@ -328,10 +329,13 @@ int main(void){
     {
         //ADC
         y = acquisitionADC();
+        // 0.6 = 38cm
+        // 0.5 = 32cm
+        // 0.4 = 26cm
         // 0.3 = 20cm
         // 0.2 = 15cm
         // 0.14 = 10cm
-        if (y < 0.14){
+        if (y < 0.6){
             LATGbits.LATG9 = 1; // Set pin RG9 as HIGH
         }
         else{
