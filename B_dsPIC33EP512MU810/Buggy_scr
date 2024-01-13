@@ -21,16 +21,9 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
 
 // PWM
 void setup_motion(int motionMode);
-int PWMfreqMAX; // 10kHz
-int motionMode; // 0 = stop, 1 = forward, 2 = backward, 3 = turn left, 4 = turn right, 5 = rotate left, 6 = rotate right
-int maxVelocityValue; // 50% of the PWM duty cycle
 
 // ADC
-float acquisitionADC();
-float y; // perceived distance
-float battery; // battery voltage
-int sg; // surge
-int yr; // yaw rate
+float acquisition_ADC();
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
@@ -164,68 +157,19 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
 
     // Check if button E8 is already pressed
     if(PORTEbits.RE8 == 0){
-        motionMode = 0; // STOP
+        stop_motion();
     }
 }
 
-void setup_motion(int motionMode){
-    // Set the fin for a 10kHz PWM control
-    // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
-    int maxVel = maxVelocityValue * 0.5; // 50% of the max velocity
-    int minVel = maxVelocityValue * 0.25; // 25% of the max velocity
-    switch (motionMode) {
-        case 0: // 0 = stop;
-            OC2R = 0; // PWM duty cycle for left motor CLOCKWISE rotation
-            OC4R = 0; // PWM duty cycle for right motor CLOCKWISE rotation
-            OC1R = 0; // PWM duty cycle for left motor COUNTERCLOCKWISE rotation
-            OC3R = 0; // PWM duty cycle for right motor COUNTERCLOCKWISE rotation
-            break;
-
-        case 1: // 1 = fw;
-            OC2R = maxVel; 
-            OC4R = maxVel; 
-            OC1R = 0;     
-            OC3R = 0;     
-            break;
-
-        case 2: // 2 = bw;
-            OC2R = 0;     
-            OC4R = 0;     
-            OC1R = maxVel; 
-            OC3R = maxVel; 
-            break;
-
-        case 3: // 3 = tr;
-            OC2R = maxVel; 
-            OC4R = minVel;   
-            OC1R = 0;     
-            OC3R = 0;     
-            break;
-
-        case 4: // 4 = tl;
-            OC2R = minVel;   
-            OC4R = maxVel; 
-            OC1R = 0;     
-            OC3R = 0;     
-            break;
-
-        case 5: // 5 = rl;
-            OC2R = maxVel; 
-            OC4R = 0;     
-            OC1R = 0;     
-            OC3R = maxVel; 
-            break;
-        
-        case 6: // 6 = rr;
-            OC2R = 0;     
-            OC4R = maxVel; 
-            OC1R = maxVel; 
-            OC3R = 0;     
-            break;
-    }
+void stop_motion(){
+    // Stop the motion
+    OC2R = 0;
+    OC4R = 0;
+    OC1R = 0;
+    OC3R = 0;
 }
 
-float acquisitionADC(){
+float acquisition_ADC(){
     // ADC sampling
     do {
         if (AD1CON1bits.SAMP == 0)
@@ -247,9 +191,10 @@ float acquisitionADC(){
     */
 }
 
-float surge_yawRate(float y){
-    float MIN = 0.14;
-    float MAX = 0.6;
+float surge_yaw_rate(float y){
+    float MIN = 0.14; // 10cm
+    float MAX = 0.6; // 38cm
+    float sg, yr = 0.0;
     if (y < MIN){
         sg = 0;
         yr = 80;
@@ -265,54 +210,49 @@ float surge_yawRate(float y){
     return sg, yr;
 }
 
-void pwm(int * sg, int * yr){
-    
+void motor_pwm(int * sg, int * yr){
+    // Set the fin for a 10kHz PWM control
+    // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
+    int maxVelocityValue = 14400; 
+    int maxVel = maxVelocityValue * 0.5; // 50% of the max velocity
+    int minVel = maxVelocityValue * 0.3; // 30% of the max velocity
+
     int sum = *sg + *yr; if (sum >= 100){ sum = 100; } //this sum can't be negative, so we don't check the -100 bound
     int sub = *sg - *yr; if (sub <= -80){ sub = -80; } //this sum can either be negative or positive from 0 to 80 so we don't check the 100 bound
     // We reasoned like this because when we turn, we don't want the velocity of the right wheels to be higher than that of the left
     // wheels: we only ever need to turn right, after all.
     
-    left_pwm1;
-    left_pwm2;
-    right_pwm1;
-    right_pwm2;
-
-    if (*yr >= 80){ //full turn
-        left_pwm1 = 5760;
-        left_pwm2 = 0;
-        right_pwm1 = 0;
-        right_pwm2 = 5760;
-    }
-    else if(*yr > 15 && *yr < 80){ 
-        if (sub >=0){ //turn right
-            left_pwm1 = sum*72;
-            left_pwm2 = 0;
-            right_pwm1 = sub*72;
-            right_pwm2 = 0;
-        }
-        else{ //turn on the spot
-            left_pwm1 = sum*72;
-            left_pwm2 = 0;
-            right_pwm1 = 0;
-            right_pwm2 = 5760+sub*72; //sub will be negative, and always between -80 and 0, so this value will always be positive
-        }
-    }
-    else if(*yr >= 0 && *yr <= 15){ //full forward
-        left_pwm1 = 4320;
-        left_pwm2 = 0;
-        right_pwm1 = 4320;
-        right_pwm2 = 0;
-    }
-    else{ //an error occurred: stop
-        left_pwm1 = 0;
-        left_pwm2 = 0;
-        right_pwm1 = 0;
-        right_pwm2 = 0;
-    }
+    int left_pwm1;
+    int right_pwm1;
+    int right_pwm2;
+    int left_pwm2;
     
+
+    if (*yr >= 70 && *yr <= 80){ // rotate left
+        left_pwm1 = 0;
+        right_pwm1 = maxVel;  
+        left_pwm2 = maxVel;
+        right_pwm2 = 0;       
+    }
+    else if (*yr >= 0 && *yr <= 10){ // full forward
+        left_pwm1 = minVel;
+        right_pwm1 = minVel;
+        left_pwm2 = 0;
+        right_pwm2 = 0;
+    }
+    else if (*yr > 10 && *yr < 70){ // turn left
+        left_pwm1 = sub * maxVel / 100;
+        right_pwm1 = sum * maxVel / 100;
+        left_pwm2 = 0;
+        right_pwm2 = 0;
+    } 
+    else{
+        stop_motion();
+        return;
+    }  
     OC2R  = left_pwm1;
-    OC1R  = left_pwm2;
     OC4R  = right_pwm1;
+    OC1R  = left_pwm2;
     OC3R  = right_pwm2;
 }
 
@@ -363,13 +303,12 @@ int main(void){
     RPOR1bits.RP66R = 0x011; // Set pin RP66 as OC2 (PWM)
     RPOR1bits.RP67R = 0x012; // Set pin RP67 as OC3 (PWM)
     RPOR2bits.RP68R = 0x013; // Set pin RP68 as OC4 (PWM)
-    // Set the PWM frequency from 0 to 10000Hz
-    maxVelocityValue = 7200; // 50% of the PWM duty cycle
-    OC1RS = maxVelocityValue; // Set the duty cycle to 50%
-    OC2RS = maxVelocityValue; // Set the duty cycle to 50%
-    OC3RS = maxVelocityValue; // Set the duty cycle to 50%
-    OC4RS = maxVelocityValue; // Set the duty cycle to 50%
-    motionMode = 0; // STOP
+    // Set the PWM frequency from 0 to 10kHz
+    OC1RS = 14400; 
+    OC2RS = 14400; 
+    OC3RS = 14400; 
+    OC4RS = 14400; 
+    stop_motion(); // Stop the motion
 
     // Configuration for ADC 
     AD1CON1bits.ADON = 1; // Enable the ADC
@@ -396,21 +335,12 @@ int main(void){
     AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan
     AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
 
-
+    float sg, yr = 0.0;
     while (1)
     {
         //ADC
-        y = acquisitionADC();
-        /*
-        if (y < 0.6){
-            LATGbits.LATG9 = 1; // Set pin RG9 as HIGH
-        }
-        else{
-            LATGbits.LATG9 = 0; // Set pin RG9 as LOW
-        }      
-        */
-        sg, yr = surge_yawRate(y);
-        pwm(&sg, &yr);
+        sg, yr = surge_yaw_rate(acquisition_ADC());
+        motor_pwm(&sg, &yr);
 
         // PWM
         //setup_motion(motionMode);
