@@ -210,7 +210,7 @@ float surge_yaw_rate(float y){
     return sg, yr;
 }
 
-void motor_pwm(int * sg, int * yr){
+void motor_pwm(int *sg, int *yr){
     // Set the fin for a 10kHz PWM control
     // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
     int maxVelocityValue = 14400; 
@@ -227,7 +227,6 @@ void motor_pwm(int * sg, int * yr){
     int right_pwm2;
     int left_pwm2;
     
-
     if (*yr >= 70 && *yr <= 80){ // rotate left
         left_pwm1 = 0;
         right_pwm1 = maxVel;  
@@ -254,6 +253,7 @@ void motor_pwm(int * sg, int * yr){
     OC4R  = right_pwm1;
     OC1R  = left_pwm2;
     OC3R  = right_pwm2;
+    return;
 }
 
 int main(void){
@@ -335,11 +335,12 @@ int main(void){
     AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan
     AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
 
-    float sg, yr = 0.0;
+    float sg, yr, distance = 0.0;
     while (1)
     {
         //ADC
-        sg, yr = surge_yaw_rate(acquisition_ADC());
+        distance = acquisition_ADC();
+        sg, yr = surge_yaw_rate(distance);
         motor_pwm(&sg, &yr);
 
         // PWM
