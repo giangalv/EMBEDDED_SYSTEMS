@@ -14,7 +14,6 @@
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
 void tmr_wait_ms(int timer, int ms);
-int on_off_led(int ledValue);
 
 // interrupt functions
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
@@ -165,10 +164,7 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
 
     // Check if button E8 is already pressed
     if(PORTEbits.RE8 == 0){
-        motionMode = motionMode + 1;
-        if (motionMode > 6){
-            motionMode = 0;
-        }
+        motionMode = 0; // STOP
     }
 }
 
@@ -176,7 +172,7 @@ void setup_motion(int motionMode){
     // Set the fin for a 10kHz PWM control
     // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
     int maxVel = maxVelocityValue * 0.5; // 50% of the max velocity
-    int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
+    int minVel = maxVelocityValue * 0.25; // 25% of the max velocity
     switch (motionMode) {
         case 0: // 0 = stop;
             OC2R = 0; // PWM duty cycle for left motor CLOCKWISE rotation
@@ -240,8 +236,17 @@ float acquisitionADC(){
     float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4); 
     //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024; // The times 3 is because of the resistor partitioning 
     return y;
-
+    /*
+    * values of y for different distances
+    * 0.6 = 38cm
+    * 0.5 = 32cm
+    * 0.4 = 26cm
+    * 0.3 = 20cm
+    * 0.2 = 15cm
+    * 0.14 = 10cm
+    */
 }
+
 
 
 int main(void){
@@ -329,12 +334,7 @@ int main(void){
     {
         //ADC
         y = acquisitionADC();
-        // 0.6 = 38cm
-        // 0.5 = 32cm
-        // 0.4 = 26cm
-        // 0.3 = 20cm
-        // 0.2 = 15cm
-        // 0.14 = 10cm
+        
         if (y < 0.6){
             LATGbits.LATG9 = 1; // Set pin RG9 as HIGH
         }
