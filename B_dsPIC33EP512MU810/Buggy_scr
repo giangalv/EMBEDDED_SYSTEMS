@@ -10,21 +10,24 @@
 #define TIMER3 3
 #define TIMER4 4
 #define TIMER5 5
+#define SIZE_OF_BUFFER 7
+#define SIZE_OF_MESSAGE_BUFFER 54
 // Function prototypes
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
 void tmr_wait_ms(int timer, int ms);
-
 // interrupt functions
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
 void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
-
 // PWM
+void PWM_initialization();
 void stop_motion();
 void motor_pwm(float y);
-
 // ADC
+void ADC_initialization();
 float acquisition_ADC();
+// UART
+
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
@@ -217,7 +220,6 @@ void motor_pwm(float y){
         right_pwm1 = maxVel;
         left_pwm2 = maxVel;
         right_pwm2 = 0;
-        LATAbits.LATA0 = 1; // Toggle the led
     }
     else if (y > MAX){ // straigh
         sg = 100;
@@ -227,7 +229,6 @@ void motor_pwm(float y){
         right_pwm1 = maxVel;
         left_pwm2 = 0;
         right_pwm2 = 0;
-        LATGbits.LATG9 = 1; // Toggle the led
     }
     else if (y <= MAX && y >= MIN){
         sg = (int) (100*(y-MIN)/(MAX-MIN)); 
@@ -246,8 +247,6 @@ void motor_pwm(float y){
             left_pwm1 = (int) (left_pwm1 - (yr-50)*minVel/100);
             right_pwm1 = (int) (right_pwm1 + (yr-50)*minVel/100);
         }
-        LATAbits.LATA0 = 1; // Toggle the led
-        LATGbits.LATG9 = 1; // Toggle the led
     }
     else{
         stop_motion();
@@ -261,9 +260,7 @@ void motor_pwm(float y){
     return;
 }
 
-int main(void){
-    ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
-
+void bottoms_initialization(){
     // Pin configuration for the buttons
     RPINR0bits.INT1R = 0x58 ; // Set pin RP24 as INT1 (button E8)
     //RPINR1bits.INT2R = 0x59 ; // Set pin RP25 as INT2 (button E9)
@@ -279,17 +276,20 @@ int main(void){
     // eneable INT1 and INT2 interrupts for E8 and E9 buttons
     IEC1bits.INT1IE = 1; // Enable INT1 interrupt for button E8
     //IEC1bits.INT2IE = 1; // Enable INT2 interrupt for button E9
+    // Configuration for timer interrupts for the button E8
+    tmr_setup_period(TIMER1, 100); // set the timer to press the button E8 for 100ms and then stop the motion
+    IEC0bits.T1IE = 1; // Enable Timer1 (T1IE) interrupt
+}
 
+void leds_initialization(){
     // Configuration for the leds
     TRISAbits.TRISA0 = 0; // Set pin RA0 as output
     TRISGbits.TRISG9 = 0; // Set pin RG9 as output
     LATAbits.LATA0 = 0; // Set pin RA0 as LOW
     LATGbits.LATG9 = 0; // Set pin RG9 as LOW
+}
 
-    // Configuration for timer interrupts for the button E8
-    tmr_setup_period(TIMER1, 100); // set the timer to press the button E8 for 100ms and then stop the motion
-    IEC0bits.T1IE = 1; // Enable Timer1 (T1IE) interrupt
-
+void PWM_initialization(){
     // Configuration for the PWM
     PTCONbits.PTEN = 1; // Enable the PWM
     // Set the input clock source for the OCx module
@@ -314,7 +314,9 @@ int main(void){
     OC3RS = 14400; 
     OC4RS = 14400; 
     stop_motion(); // Stop the motion
+}
 
+void ADC_initialization(){
     // Configuration for ADC 
     AD1CON1bits.ADON = 1; // Enable the ADC
     AD1CON3bits.ADCS = 14; // Select how long is the TAD, timing for the ADC, as a function of Fcy (TAD = TCY*(ADCS+1) = 15*15 = 225ns)
@@ -339,6 +341,35 @@ int main(void){
     AD1CSSLbits.CSS14 = 1; // Enable AN14 for scan
     AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan
     AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
+}
+
+void UART_initialization(){
+    // Configuration for UART
+    U2MODE = 0; // Clear UART2 mode register
+    U2STA = 0; // Clear UART2 status register
+    U2BRG = 157; // 28800 baud rate
+
+    U2MODEbits.UARTEN = 1; // Enable UART2
+    U2STAbits.UTXEN = 1; // Enable UART2 transmission
+    U2STAbits.URXISEL = 3; // Interrup when the buffer is full
+    IEC1bits.U2RXIE = 1; // Enable UART2 interrupt
+    U2STAbits.UTXISEL0 = 0; // Interrupt when the buffer is empty
+    U2STAbits.UTXISEL1 = 0; // Interrupt when the buffer is empty
+
+    // UART2 TX and RX pins
+    RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
+    RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
+}
+
+int main(void){
+    ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
+
+    // initializations
+    leds_initialization();
+    bottoms_initialization();
+    PWM_initialization();
+    ADC_initialization();    
+    UART_initialization();
 
     float distance = 0.0;
     while (1)
@@ -347,11 +378,9 @@ int main(void){
         distance = acquisition_ADC();
         motor_pwm(distance);
 
-        // PWM
-        //setup_motion(motionMode);
+        //UART
+
         tmr_wait_ms(TIMER2, 100); // Wait 100ms
-        LATAbits.LATA0 = 0; // Set pin RA0 as LOW
-        LATGbits.LATG9 = 0; // Set pin RG9 as LOW
     }
     return 0;
 }
