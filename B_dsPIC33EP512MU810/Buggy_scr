@@ -218,41 +218,58 @@ float surge_yaw_rate(float y){
         tmr_wait_ms(TIMER2, 100); // Wait 100ms
     }
     return sg, yr;
+
+    // QUA CALCOLI SEMPLICEMENTE LA PERCENTUALE DI VELOCITÀ LINEARE E ANGOLARE
 }
 
 void motor_pwm(int sg, int yr){
     // Set the fin for a 10kHz PWM control
     // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
+
+    // QUA METTIAMO LA LOGICA. SE SIAMO NEI CASI ESTREMI (100% VELOCITÀ LINEARE O ANGOLARE) ALLORA FACCIO SOLO QUELLO
+    // SE SIAMO NEL CASO INTERMEDIO CALCOLO SEPARATAMENTE LA VELOCIÀ LINEARE DA APPLICARE, ALLA QUALE SOMMO (E SOTTRAGGO) LA COMPONENTE ANGOLARE
+    // ENTRAMBE QUESTE COMPONENTI SARANNO CALCOLATE COME LA PERCENTUALE DELLA VELOCITÀ MASSIMA (14400)
+
     int maxVelocityValue = 14400; 
     int maxVel = maxVelocityValue * 0.6; // 50% of the max velocity
-    int minVel = maxVelocityValue * 0.3; // 30% of the max velocity
+    int minVel = maxVelocityValue * 0.2; // 30% of the max velocity
     
-    int left_pwm1;
+    int left_pwm1; 
     int right_pwm1;
     int right_pwm2;
     int left_pwm2;
     
-    if (yr >= 80){ // rotate left
+    if (sg <= 10 && yr >= 90){
         left_pwm1 = 0;
-        right_pwm1 = maxVel;  
+        right_pwm1 = maxVel;
         left_pwm2 = maxVel;
-        right_pwm2 = 0;       
+        right_pwm2 = 0;
     }
-    else if (sg >= 80) // full forward
-    {
-        left_pwm1 = minVel;
-        right_pwm1 = minVel;
+    else if (sg >= 90 && yr <= 10){
+        left_pwm1 = maxVel;
+        right_pwm1 = maxVel;
         left_pwm2 = 0;
         right_pwm2 = 0;
     }
-    else if (sg < 80 && yr < 80){ // rotate left
-        int lineraVel = (int) (sg*maxVel/100);
-        int angularVel = (int) (yr*maxVel/100);
-        left_pwm1 = (lineraVel + angularVel)/2;
-        right_pwm1 = (lineraVel - angularVel)/2;
+    else if (sg < 90 && sg > 10){
+        // componente lineare
+        left_pwm1 = (int) (sg*maxVel/100);
+        right_pwm1 = (int) (sg*maxVel/100);
         left_pwm2 = 0;
         right_pwm2 = 0;
-    }    
+        // componente angolare
+        left_pwm1 = left_pwm1 - (int) (yr*maxVel/100);
+        right_pwm1 = right_pwm1 + (int) (yr*maxVel/100);
+        left_pwm2 = 0;
+        right_pwm2 = 0;
+        // check if the velocity is too low
+        if (left_pwm1 < minVel){
+            left_pwm1 = minVel;
+        }
+        if (right_pwm1 < minVel){
+            right_pwm1 = minVel;
+        }
+    }
     else{
         stop_motion();
         return;
