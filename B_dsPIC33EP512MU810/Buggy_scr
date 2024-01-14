@@ -20,7 +20,8 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
 void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
 
 // PWM
-void setup_motion(int motionMode);
+void stop_motion();
+void motor_pwm(float y);
 
 // ADC
 float acquisition_ADC();
@@ -191,38 +192,7 @@ float acquisition_ADC(){
     */
 }
 
-float surge_yaw_rate(float y){
-    float MIN = 0.14; // 10cm
-    float MAX = 0.6; // 38cm
-    float sg, yr = 0.0;
-    if (y < MIN){
-        sg = 0;
-        yr = 100;
-
-        LATAbits.LATA0 = 1; // Toggle the led
-        tmr_wait_ms(TIMER2, 100); // Wait 100ms
-    }
-    else if (y > MAX){
-        sg = 100;
-        yr = 0;
-
-        LATGbits.LATG9 = 1; // Toggle the led
-        tmr_wait_ms(TIMER2, 100); // Wait 100ms
-    }
-    else{
-        sg = (int) (100*(y-MIN)/(MAX-MIN));
-        yr = (int) (100*(MAX-y)/(MAX-MIN));
-
-        LATAbits.LATA0 = 1; // Set pin RA0 as LOW
-        LATGbits.LATG9 = 1; // Set pin RG9 as LOW
-        tmr_wait_ms(TIMER2, 100); // Wait 100ms
-    }
-    return sg, yr;
-
-    // QUA CALCOLI SEMPLICEMENTE LA PERCENTUALE DI VELOCITÀ LINEARE E ANGOLARE
-}
-
-void motor_pwm(int sg, int yr){
+void motor_pwm(float y){
     // Set the fin for a 10kHz PWM control
     // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
 
@@ -231,49 +201,59 @@ void motor_pwm(int sg, int yr){
     // ENTRAMBE QUESTE COMPONENTI SARANNO CALCOLATE COME LA PERCENTUALE DELLA VELOCITÀ MASSIMA (14400)
 
     int maxVelocityValue = 14400; 
-    int maxVel = maxVelocityValue * 0.6; // 50% of the max velocity
-    int minVel = maxVelocityValue * 0.2; // 30% of the max velocity
+    int maxVel = maxVelocityValue * 0.6; // 60% of the max velocity
+    int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
     
-    int left_pwm1; 
-    int right_pwm1;
-    int right_pwm2;
-    int left_pwm2;
-    
-    if (sg <= 10 && yr >= 90){
+    int left_pwm1, right_pwm1, left_pwm2, right_pwm2;
+    float MIN = 0.2; // 15cm
+    float MAX = 0.6; // 38cm
+    float sg, yr = 0.0;
+
+    if (y < MIN){ // rotate left
+        sg = 0;
+        yr = 100;
+
         left_pwm1 = 0;
         right_pwm1 = maxVel;
         left_pwm2 = maxVel;
         right_pwm2 = 0;
+        LATAbits.LATA0 = 1; // Toggle the led
     }
-    else if (sg >= 90 && yr <= 10){
+    else if (y > MAX){ // straigh
+        sg = 100;
+        yr = 0;
+
         left_pwm1 = maxVel;
         right_pwm1 = maxVel;
         left_pwm2 = 0;
         right_pwm2 = 0;
+        LATGbits.LATG9 = 1; // Toggle the led
     }
-    else if (sg < 90 && sg > 10){
+    else if (y <= MAX && y >= MIN){
+        sg = (int) (100*(y-MIN)/(MAX-MIN)); 
+        yr = (int) (100*(MAX-y)/(MAX-MIN)); 
+
         // componente lineare
-        left_pwm1 = (int) (sg*maxVel/100);
-        right_pwm1 = (int) (sg*maxVel/100);
+        left_pwm1 = (int) (sg*minVel/100);  //2888
+        right_pwm1 = (int) (sg*minVel/100); //2888
         left_pwm2 = 0;
         right_pwm2 = 0;
-        // componente angolare
-        left_pwm1 = left_pwm1 - (int) (yr*maxVel/100);
-        right_pwm1 = right_pwm1 + (int) (yr*maxVel/100);
-        left_pwm2 = 0;
-        right_pwm2 = 0;
-        // check if the velocity is too low
-        if (left_pwm1 < minVel){
-            left_pwm1 = minVel;
+
+        if (yr > 50){
+            left_pwm1 = (int) (minVel*0.5);
+            right_pwm1 = (int) (minVel*0.5);
+
+            left_pwm1 = (int) (left_pwm1 - (yr-50)*minVel/100);
+            right_pwm1 = (int) (right_pwm1 + (yr-50)*minVel/100);
         }
-        if (right_pwm1 < minVel){
-            right_pwm1 = minVel;
-        }
+        LATAbits.LATA0 = 1; // Toggle the led
+        LATGbits.LATG9 = 1; // Toggle the led
     }
     else{
         stop_motion();
         return;
-    }  
+    }
+
     OC2R  = left_pwm1;
     OC4R  = right_pwm1;
     OC1R  = left_pwm2;
@@ -360,16 +340,16 @@ int main(void){
     AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan
     AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
 
-    float sg_, yr_, distance = 0.0;
+    float distance = 0.0;
     while (1)
     {
         //ADC
         distance = acquisition_ADC();
-        sg_, yr_ = surge_yaw_rate(distance);
-        motor_pwm(sg_, yr_);
+        motor_pwm(distance);
 
         // PWM
         //setup_motion(motionMode);
+        tmr_wait_ms(TIMER2, 100); // Wait 100ms
         LATAbits.LATA0 = 0; // Set pin RA0 as LOW
         LATGbits.LATG9 = 0; // Set pin RG9 as LOW
     }
