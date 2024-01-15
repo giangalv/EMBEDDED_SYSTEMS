@@ -44,13 +44,8 @@ void motor_pwm(float y);
 // ADC
 void ADC_initialization();
 float acquisition_ADC();
-<<<<<<< HEAD
-// UART
 
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
-
-=======
->>>>>>> 1348eacc5b0653e538e81c8b2b994754cbbbf759
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
