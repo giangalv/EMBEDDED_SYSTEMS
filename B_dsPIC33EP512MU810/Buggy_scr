@@ -221,7 +221,7 @@ void motor_pwm(float y){
         left_pwm2 = maxVel;
         right_pwm2 = 0;
     }
-    else if (y > MAX){ // straigh
+    else if (y > MAX){ // move forward
         sg = 100;
         yr = 0;
 
@@ -230,7 +230,7 @@ void motor_pwm(float y){
         left_pwm2 = 0;
         right_pwm2 = 0;
     }
-    else if (y <= MAX && y >= MIN){
+    else if (y <= MAX && y >= MIN){ // turn left
         sg = (int) (100*(y-MIN)/(MAX-MIN)); 
         yr = (int) (100*(MAX-y)/(MAX-MIN)); 
 
@@ -248,7 +248,7 @@ void motor_pwm(float y){
             right_pwm1 = (int) (right_pwm1 + (yr-50)*minVel/100);
         }
     }
-    else{
+    else{ // if there is an error stop the motion
         stop_motion();
         return;
     }
