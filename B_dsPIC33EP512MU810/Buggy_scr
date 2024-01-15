@@ -361,6 +361,102 @@ void UART_initialization(){
     RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
 }
 
+
+
+
+
+// CIRCULAR BUFFER
+struct circular_buffer {
+    // Struct that contains only the usefull information that we need from the buffer
+    char buffer[SIZE_OF_BUFFER];                // Buffer
+    int bufferLength;                           // Different from the SIZE_OF_BUFFER, it's 'writeIndex - readIndex', the number of bytes that we still have to read
+    int readIndex;
+    int writeIndex;
+};
+
+struct circular_buffer cb;                      // Our circular buffer
+
+void initBuffer(){
+    // Function to initialize the circular buffer
+    cb.bufferLength = 0;
+    cb.readIndex = 0;
+    cb.writeIndex = 0;
+}
+
+void push(char receivedChar) {
+    /*
+     * Pushes characters received from UART into the circular buffer for writing.
+     * If the circular buffer overflows, characters will be lost.
+     */
+
+    if (cb.bufferLength == SIZE_OF_BUFFER) {
+        // Buffer is full, cannot push more characters
+        return;
+    } 
+    else {
+        // Push the character into the buffer
+        cb.buffer[cb.writeIndex] = receivedChar;
+        cb.bufferLength++;
+        cb.writeIndex++;
+
+        // Wrap around if the writeIndex exceeds the buffer size
+        if (cb.writeIndex == SIZE_OF_BUFFER) {
+            cb.writeIndex = 0;
+        }
+    }
+}
+
+void pull() {
+    /*
+     * Takes out all characters from the circular buffer and sends them to 'printFunctionFirstRow',
+     * which will print them. When the circular buffer is empty, and the UART is not sending characters,
+     * 'convertNumberToString' writes the number of characters printed on the second row of the LCD.
+     */
+
+    while (cb.bufferLength > 0) {
+        if (cb.bufferLength == 0) {
+            // Buffer is empty
+            return;
+        } 
+        else {
+            char receivedChar = cb.buffer[cb.readIndex];
+            cb.bufferLength--;
+            cb.readIndex++;
+            number_readings++;
+
+            // Wrap around if the readIndex exceeds the buffer size
+            if (cb.readIndex == SIZE_OF_BUFFER) {
+                cb.readIndex = 0;
+            }
+
+            printFunctionFirstRow(receivedChar);
+
+            // Check if the buffer is empty and UART is not sending characters
+            if (cb.bufferLength == 0 && U2STAbits.URXDA == 0) {
+                convertNumberToString(number_readings);
+                setCursorPositionFirstRow(position_first_row[number_first_row]);
+            }
+        }
+    }
+}
+// INTERRUPT UART
+void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
+    () {
+    /*
+     * Interrupt function of the UART2: when the buffer is full, execute it.
+     * Read the buffer and push the data inside the circular buffer
+     */ 
+    IFS1bits.U2RXIF = 0;                          // Reset the flag
+    if(U2STAbits.URXDA == 1){                     // If there are data to be read
+        char receivedData = U2RXREG;              // Read
+        push(receivedData);                       // Push
+    }    
+}
+
+
+
+
+
 int main(void){
     ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
 
@@ -374,6 +470,16 @@ int main(void){
     float distance = 0.0;
     while (1)
     {
+        // Check if there are characters in UART2 buffer
+        if (U2STAbits.URXDA == 1) {   
+            IEC1bits.U2RXIE = 0;         // Disable interrupt for UART2 reception
+            char receivedData = U2RXREG; // Read from UART2
+            push(receivedData);   
+            IEC1bits.U2RXIE = 1;         // Enable UART2 reception interrupt
+        }
+        pull();
+
+
         //ADC
         distance = acquisition_ADC();
         motor_pwm(distance);
