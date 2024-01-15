@@ -14,6 +14,22 @@
 #define STATE_MOTION 1
 #define SIZE_OF_BUFFER 7
 #define SIZE_OF_MESSAGE_BUFFER 54
+
+#define STATE_DOLLAR  (1) // we discard everything until a dollar is found
+#define STATE_TYPE    (2) // we are reading the type of msg until a comma is found
+#define STATE_PAYLOAD (3) // we read the payload until an asterix is found
+#define NEW_MESSAGE (1) // new message received and parsed completely
+#define NO_MESSAGE (0) // no new messages
+
+typedef struct { 
+	int state;
+	char msg_type[6]; // type is 5 chars + string terminator
+	char msg_payload[100];  // assume payload cannot be longer than 100 chars
+	int index_type;
+	int index_payload;
+} parser_state;
+
+int parse_byte(parser_state* ps, char byte);
 // Function prototypes
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
@@ -28,10 +44,6 @@ void motor_pwm(float y);
 // ADC
 void ADC_initialization();
 float acquisition_ADC();
-// UART
-
-int state = STATE_WAIT; // 0 = wait, 1 = move
-
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
@@ -136,6 +148,49 @@ void tmr_wait_ms(int timer, int ms){
         T5CONbits.TON = 1; // Starts the timer
     }
     tmr_wait_period(timer);
+}
+
+int parse_byte(parser_state* ps, char byte) {
+    switch (ps->state) {
+        case STATE_DOLLAR:
+            if (byte == '$') {
+                ps->state = STATE_TYPE;
+                ps->index_type = 0;
+            }
+            break;
+        case STATE_TYPE:
+            if (byte == ',') {
+                ps->state = STATE_PAYLOAD;
+                ps->msg_type[ps->index_type] = '\0';
+                ps->index_payload = 0; // initialize properly the index
+            } else if (ps->index_type == 6) { // error! 
+                ps->state = STATE_DOLLAR;
+                ps->index_type = 0;
+			} else if (byte == '*') {
+				ps->state = STATE_DOLLAR; // get ready for a new message
+                ps->msg_type[ps->index_type] = '\0';
+				ps->msg_payload[0] = '\0'; // no payload
+                return NEW_MESSAGE;
+            } else {
+                ps->msg_type[ps->index_type] = byte; // ok!
+                ps->index_type++; // increment for the next time;
+            }
+            break;
+        case STATE_PAYLOAD:
+            if (byte == '*') {
+                ps->state = STATE_DOLLAR; // get ready for a new message
+                ps->msg_payload[ps->index_payload] = '\0';
+                return NEW_MESSAGE;
+            } else if (ps->index_payload == 100) { // error
+                ps->state = STATE_DOLLAR;
+                ps->index_payload = 0;
+            } else {
+                ps->msg_payload[ps->index_payload] = byte; // ok!
+                ps->index_payload++; // increment for the next time;
+            }
+            break;
+    }
+    return NO_MESSAGE;
 }
 
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt(){
@@ -383,8 +438,6 @@ struct circular_buffer {
     int writeIndex;
 };
 
-struct circular_buffer cb;                      // Our circular buffer
-
 void initBuffer(){
     // Function to initialize the circular buffer
     cb.bufferLength = 0;
@@ -428,26 +481,27 @@ void pull() {
             return;
         } 
         else {
+            IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
             char receivedChar = cb.buffer[cb.readIndex];
             cb.bufferLength--;
             cb.readIndex++;
-            number_readings++;
 
             // Wrap around if the readIndex exceeds the buffer size
             if (cb.readIndex == SIZE_OF_BUFFER) {
                 cb.readIndex = 0;
             }
-
-            printFunctionFirstRow(receivedChar);
-
-            // Check if the buffer is empty and UART is not sending characters
-            if (cb.bufferLength == 0 && U2STAbits.URXDA == 0) {
-                convertNumberToString(number_readings);
-                setCursorPositionFirstRow(position_first_row[number_first_row]);
+            int message = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
+            IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
+            
+            if (message == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
+                if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
+                    parse_pcth(ps.msg_payload, &sdata);
+                }
             }
         }
     }
 }
+
 // INTERRUPT UART
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
     () {
@@ -462,6 +516,9 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
     }    
 }
 
+int state = STATE_WAIT; // 0 = wait, 1 = move
+volatile parser_state ps;
+struct circular_buffer cb;                      // Our circular buffer
 
 
 
