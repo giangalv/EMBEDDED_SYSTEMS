@@ -30,7 +30,7 @@ void ADC_initialization();
 float acquisition_ADC();
 // UART
 
-int state = STATE_WAIT; // 0 = wait, 1 = move
+int mainState = STATE_WAIT; // 0 = wait, 1 = move
 
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
@@ -165,12 +165,14 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
 
     // Check if button E8 is already pressed
     if(PORTEbits.RE8 == 0){
-        if (state == STATE_WAIT){
-            state = STATE_MOTION;
+        if (mainState == STATE_WAIT){
+            mainState = STATE_MOTION;
         }
-        else if (state == STATE_MOTION){
-            state = STATE_WAIT;
+        else if (mainState == STATE_MOTION){
+            mainState = STATE_WAIT;
         }
+        // turn off the lights
+        lights_off();
     }
 }
 
@@ -269,6 +271,16 @@ void motor_pwm(float y){
     return;
 }
 
+void lights_off(){
+    LATAbits.LATA0 = 0; 
+    LATGbits.LATG9 = 0; 
+    LATBbits.LATB8 = 0; 
+    LATFbits.LATF1 = 0; 
+    LATFbits.LATF0 = 0; 
+    LATGbits.LATG1 = 0; 
+    LATAbits.LATA7 = 0;
+}
+
 void bottoms_initialization(){
     // Pin configuration for the buttons
     RPINR0bits.INT1R = 0x58 ; // Set pin RP24 as INT1 (button E8)
@@ -294,8 +306,14 @@ void leds_initialization(){
     // Configuration for the leds
     TRISAbits.TRISA0 = 0; // Set pin RA0 as output
     TRISGbits.TRISG9 = 0; // Set pin RG9 as output
-    LATAbits.LATA0 = 0; // Set pin RA0 as LOW
-    LATGbits.LATG9 = 0; // Set pin RG9 as LOW
+    TRISBbits.TRISB8 = 0; // Set pin RB8 as output -> left side lights
+    TRISFbits.TRISF1 = 0; // Set pin RF1 as output -> right side lights
+    TRISFbits.TRISF0 = 0; // Set pin RF0 as output -> breaks lights
+    TRISGbits.TRISG1 = 0; // Set pin RG1 as output -> low intensity lights
+    TRISAbits.TRISA7 = 0; // Set pin RA7 as output -> beam lights
+
+    // Set the lights off
+    lights_off(); 
 }
 
 void PWM_initialization(){
@@ -482,17 +500,20 @@ int main(void){
     int counterBlinkWaitSate = 0;
     while (1)
     {
-        if (state == STATE_WAIT){
+        if (mainState == STATE_WAIT){
             // Wait for the interrupt
             stop_motion();
             counterBlinkWaitSate += 1;
             if (counterBlinkWaitSate == 1000){
+                // blink the lights at 1Hz
                 LATGbits.LATG9 = !LATGbits.LATG9;
                 LATAbits.LATA0 = !LATAbits.LATA0;
+                LATBbits.LATB8 = !LATBbits.LATB8;
+                LATFbits.LATF1 = !LATFbits.LATF1;
                 counterBlinkWaitSate = 0;
             }
         }
-        else if (state == STATE_MOTION){
+        else if (mainState == STATE_MOTION){
             counterBlinkWaitSate = 0;
             // Move the buggy
             distance = acquisition_ADC();
