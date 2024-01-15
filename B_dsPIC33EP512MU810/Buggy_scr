@@ -21,14 +21,6 @@
 #define NEW_MESSAGE (1) // new message received and parsed completely
 #define NO_MESSAGE (0) // no new messages
 
-typedef struct { 
-	int state;
-	char msg_type[6]; // type is 5 chars + string terminator
-	char msg_payload[100];  // assume payload cannot be longer than 100 chars
-	int index_type;
-	int index_payload;
-} parser_state;
-
 int parse_byte(parser_state* ps, char byte);
 // Function prototypes
 void tmr_setup_period(int timer, int ms);
@@ -45,12 +37,31 @@ void motor_pwm(float y);
 void ADC_initialization();
 float acquisition_ADC();
 
-<<<<<<< Updated upstream
-=======
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
 int counterBlink = 0;
 
->>>>>>> Stashed changes
+
+// CIRCULAR BUFFER
+struct circular_buffer {
+    // Struct that contains only the usefull information that we need from the buffer
+    char buffer[SIZE_OF_BUFFER];                // Buffer
+    int bufferLength;                           // Different from the SIZE_OF_BUFFER, it's 'writeIndex - readIndex', the number of bytes that we still have to read
+    int readIndex;
+    int writeIndex;
+};
+
+typedef struct { 
+	int state;
+	char msg_type[6]; // type is 5 chars + string terminator
+	char msg_payload[100];  // assume payload cannot be longer than 100 chars
+	int index_type;
+	int index_payload;
+} parser_state;
+
+volatile parser_state ps;
+struct circular_buffer cb;                      // Our circular buffer
+volatile threshold_data sdata;
+
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
 // this is too high to be put in a 16 bit register (max 65535)
@@ -404,7 +415,7 @@ void motor_pwm(float y){
 
 void lights_motion(float sg, float yr){
     // Set the lights
-    if(sg => 50){
+    if(sg >= 50){
         LATFbits.LATF0 = 0; 
         LATGbits.LATG1 = 0;
         LATAbits.LATA7 = 1; // beam lights on
@@ -419,8 +430,7 @@ void lights_motion(float sg, float yr){
         TMR3 = 0.0;
         T3CONbits.TON = 1;
     }
-    else
-    {
+    else {
         // stop the timer3
         T3CONbits.TON = 0;
         TMR3 = 0.0;
@@ -547,19 +557,6 @@ void UART_initialization(){
     RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
 }
 
-
-
-
-
-// CIRCULAR BUFFER
-struct circular_buffer {
-    // Struct that contains only the usefull information that we need from the buffer
-    char buffer[SIZE_OF_BUFFER];                // Buffer
-    int bufferLength;                           // Different from the SIZE_OF_BUFFER, it's 'writeIndex - readIndex', the number of bytes that we still have to read
-    int readIndex;
-    int writeIndex;
-};
-
 void initBuffer(){
     // Function to initialize the circular buffer
     cb.bufferLength = 0;
@@ -640,12 +637,6 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
     }    
 }
 
-volatile parser_state ps;
-struct circular_buffer cb;                      // Our circular buffer
-volatile threshold_data sdata;
-int mainState = STATE_WAIT; // 0 = wait, 1 = move
-
-
 
 int main(void){
     ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
@@ -670,7 +661,6 @@ int main(void){
             stop_motion();
             TMR3 = 0.0;
             T3CONbits.TON = 1;
-            }
         }
         else if (mainState == STATE_MOTION){
             // Move the buggy
@@ -686,7 +676,7 @@ int main(void){
         }
         pull();
 
-        IFS1bits.T2IF = 0;        
+        IFS0bits.T2IF = 0;        
         T2CONbits.TON = 1;  
         tmr_wait_period(TIMER2);
     }
