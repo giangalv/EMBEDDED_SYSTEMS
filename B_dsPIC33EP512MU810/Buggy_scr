@@ -45,6 +45,12 @@ void motor_pwm(float y);
 void ADC_initialization();
 float acquisition_ADC();
 
+<<<<<<< Updated upstream
+=======
+int mainState = STATE_WAIT; // 0 = wait, 1 = move
+int counterBlink = 0;
+
+>>>>>>> Stashed changes
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
 // this is too high to be put in a 16 bit register (max 65535)
@@ -265,8 +271,36 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
         else if (mainState == STATE_MOTION){
             mainState = STATE_WAIT;
         }
+        // stop the timer3
+        T3CONbits.TON = 0; 
+        TMR3 = 0.0;
+
         // turn off the lights
         lights_off();
+    }
+}
+
+void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt(){
+    /*
+    * Timer3 (T3) interrupt function: Resets the Timer3 interrupt flag,
+    * implements the variable 'counterBlink' because we cannot have a timer with a period of 1 second,
+    * so we wait two times the interrupt period (500ms) to have a period of 1 second. 
+    * After that, we blink the lights at 1Hz.
+    */
+    IFS0bits.T3IF = 0;      // Reset Timer3 interrupt flag
+    counterBlink += 1;
+    if (counterBlink == 2 && mainState == STATE_WAIT){
+        // blink the lights at 1Hz
+        LATGbits.LATG9 = !LATGbits.LATG9;
+        LATAbits.LATA0 = !LATAbits.LATA0;
+        LATBbits.LATB8 = !LATBbits.LATB8;
+        LATFbits.LATF1 = !LATFbits.LATF1;
+        counterBlink = 0;
+    }
+    else if (counterBlink == 2 && mainState == STATE_MOTION){
+        // blink the right side lights at 1Hz
+        LATFbits.LATF1 = !LATFbits.LATF1;
+        counterBlink = 0;
     }
 }
 
@@ -594,21 +628,16 @@ int main(void){
 
     // set the timer for the main at 1kHz
     tmr_setup_period(TIMER2, 1); // set the timer to 1ms
+    tmr_setup_period(TIMER3, 500); // set the timer to 500ms
     float distance = 0.0;
-    int counterBlinkWaitSate, counterBlinkMotionState = 0;
+    int counterBlinkWaitSate = 0;
     while (1)
     {
         if (mainState == STATE_WAIT){
             // Wait for the interrupt
             stop_motion();
-            counterBlinkWaitSate += 1;
-            if (counterBlinkWaitSate == 999){
-                // blink the lights at 1Hz
-                LATGbits.LATG9 = !LATGbits.LATG9;
-                LATAbits.LATA0 = !LATAbits.LATA0;
-                LATBbits.LATB8 = !LATBbits.LATB8;
-                LATFbits.LATF1 = !LATFbits.LATF1;
-                counterBlinkWaitSate = 0;
+            TMR3 = 0.0;
+            T3CONbits.TON = 1;
             }
         }
         else if (mainState == STATE_MOTION){
@@ -616,12 +645,6 @@ int main(void){
             // Move the buggy
             distance = acquisition_ADC();
             motor_pwm(distance);
-            counterBlinkMotionState += 1;
-            if (counterBlinkMotionState == 999){
-                // blink the right side lights at 1Hz
-                LATFbits.LATF1 = !LATFbits.LATF1;
-                counterBlinkMotionState = 0;
-            }
         }
         // Check if there are characters in UART2 buffer
         if (U2STAbits.URXDA == 1) {   
