@@ -556,14 +556,14 @@ int main(void){
     // set the timer for the main at 1kHz
     tmr_setup_period(TIMER2, 1); // set the timer to 1ms
     float distance = 0.0;
-    int counterBlinkWaitSate = 0;
+    int counterBlinkWaitSate, counterBlinkMotionState = 0;
     while (1)
     {
         if (mainState == STATE_WAIT){
             // Wait for the interrupt
             stop_motion();
             counterBlinkWaitSate += 1;
-            if (counterBlinkWaitSate == 1000){
+            if (counterBlinkWaitSate == 999){
                 // blink the lights at 1Hz
                 LATGbits.LATG9 = !LATGbits.LATG9;
                 LATAbits.LATA0 = !LATAbits.LATA0;
@@ -577,6 +577,12 @@ int main(void){
             // Move the buggy
             distance = acquisition_ADC();
             motor_pwm(distance);
+            counterBlinkMotionState += 1;
+            if (counterBlinkMotionState == 999){
+                // blink the right side lights at 1Hz
+                LATFbits.LATF1 = !LATFbits.LATF1;
+                counterBlinkMotionState = 0;
+            }
         }
         // Check if there are characters in UART2 buffer
         if (U2STAbits.URXDA == 1) {   
