@@ -10,6 +10,8 @@
 #define TIMER3 3
 #define TIMER4 4
 #define TIMER5 5
+#define STATE_WAIT 0
+#define STATE_MOTION 1
 #define SIZE_OF_BUFFER 7
 #define SIZE_OF_MESSAGE_BUFFER 54
 // Function prototypes
@@ -27,6 +29,8 @@ void motor_pwm(float y);
 void ADC_initialization();
 float acquisition_ADC();
 // UART
+
+int state = STATE_WAIT; // 0 = wait, 1 = move
 
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
@@ -161,7 +165,12 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
 
     // Check if button E8 is already pressed
     if(PORTEbits.RE8 == 0){
-        stop_motion();
+        if (state == STATE_WAIT){
+            state = STATE_MOTION;
+        }
+        else if (state == STATE_MOTION){
+            state = STATE_WAIT;
+        }
     }
 }
 
@@ -467,9 +476,28 @@ int main(void){
     ADC_initialization();    
     UART_initialization();
 
+    // set the timer for the main at 1kHz
+    tmr_setup_period(TIMER2, 1); // set the timer to 1ms
     float distance = 0.0;
+    int counterBlinkWaitSate = 0;
     while (1)
     {
+        if (state == STATE_WAIT){
+            // Wait for the interrupt
+            stop_motion();
+            counterBlinkWaitSate += 1;
+            if (counterBlinkWaitSate == 1000){
+                LATGbits.LATG9 = !LATGbits.LATG9;
+                LATAbits.LATA0 = !LATAbits.LATA0;
+                counterBlinkWaitSate = 0;
+            }
+        }
+        else if (state == STATE_MOTION){
+            counterBlinkWaitSate = 0;
+            // Move the buggy
+            distance = acquisition_ADC();
+            motor_pwm(distance);
+        }
         // Check if there are characters in UART2 buffer
         if (U2STAbits.URXDA == 1) {   
             IEC1bits.U2RXIE = 0;         // Disable interrupt for UART2 reception
@@ -479,14 +507,9 @@ int main(void){
         }
         pull();
 
-
-        //ADC
-        distance = acquisition_ADC();
-        motor_pwm(distance);
-
-        //UART
-
-        tmr_wait_ms(TIMER2, 100); // Wait 100ms
+        IFS1bits.T2IF = 0;        
+        T2CONbits.TON = 1;  
+        tmr_wait_period(TIMER2);
     }
     return 0;
 }
