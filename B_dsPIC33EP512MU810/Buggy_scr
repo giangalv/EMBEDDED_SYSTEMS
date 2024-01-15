@@ -150,6 +150,8 @@ void tmr_wait_ms(int timer, int ms){
     tmr_wait_period(timer);
 }
 
+// We won't delve deeper in the explaination of the functions "parse_byte", "extract_integer",
+// "next_value" and "parse_pcth", because they have been given to us already made.
 int parse_byte(parser_state* ps, char byte) {
     switch (ps->state) {
         case STATE_DOLLAR:
