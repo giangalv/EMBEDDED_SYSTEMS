@@ -371,8 +371,8 @@ void motor_pwm(float y){
     int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
     
     int left_pwm1, right_pwm1, left_pwm2, right_pwm2;
-    float MIN = 0.2; // 15cm
-    float MAX = 0.6; // 38cm
+    float MIN = threshold_calculation(sdata->minth); // 15cm -> ~0.2
+    float MAX = threshold_calculation(sdata->maxth); // 38cm -> ~0.6
     float sg, yr = 0.0;
 
     if (y < MIN){ // rotate left
@@ -424,6 +424,12 @@ void motor_pwm(float y){
     // Set the lights
     lights_motion(sg, yr);
     return;
+}
+
+// Function to calculate the threshold based on our empirical data..
+float threshold_calculation(float y_cm){
+    float threshold = (float) ((0.016 * y_cm) - 0.025);
+    return threshold;
 }
 
 void lights_motion(float sg, float yr){
@@ -668,6 +674,21 @@ int main(void){
     IEC0bits.T3IE = 1; // Enable Timer3 (T3IE) interrupt
 
     float distance = 0.0;
+
+    // Circular buffer initialization:
+    cb.writeIndex = 0;
+    cb.readIndex = 0;
+    cb.bufferLength = 0;
+    
+    // Parser state initialization:
+    ps.state = STATE_DOLLAR; 
+    ps.index_type = 0; 
+    ps.index_payload = 0;
+    
+    // Threshold data initialization:
+    sdata.minth = 15; 
+    sdata.maxth = 38;
+    
     while (1)
     {
         if (mainState == STATE_WAIT){
