@@ -21,7 +21,7 @@
 #define NEW_MESSAGE (1) // new message received and parsed completely
 #define NO_MESSAGE (0) // no new messages
 
-int parse_byte(parser_state* ps, char byte);
+
 // Function prototypes
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
@@ -29,6 +29,7 @@ void tmr_wait_ms(int timer, int ms);
 // interrupt functions
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
 void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
+void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt();
 // PWM
 void PWM_initialization();
 void stop_motion();
@@ -57,6 +58,8 @@ typedef struct {
 	int index_type;
 	int index_payload;
 } parser_state;
+
+int parse_byte(parser_state* ps, char byte);
 
 // Structure definition for the thresholds to be set and considered for PWM.
 typedef struct {
@@ -291,7 +294,7 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
         // stop the timer3
         T3CONbits.TON = 0; 
         TMR3 = 0.0;
-
+        counterBlink = 0;
         // turn off the lights
         lights_off();
     }
@@ -305,20 +308,24 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt(){
     * After that, we blink the lights at 1Hz.
     */
     IFS0bits.T3IF = 0;      // Reset Timer3 interrupt flag
+    TMR3 = 0.0;
     counterBlink += 1;
-    if (counterBlink == 2 && mainState == STATE_WAIT){
+    if (counterBlink == 5 && mainState == STATE_WAIT){
         // blink the lights at 1Hz
         LATGbits.LATG9 = !LATGbits.LATG9;
         LATAbits.LATA0 = !LATAbits.LATA0;
         LATBbits.LATB8 = !LATBbits.LATB8;
         LATFbits.LATF1 = !LATFbits.LATF1;
         counterBlink = 0;
+        return;
     }
-    else if (counterBlink == 2 && mainState == STATE_MOTION){
+    else if (counterBlink == 5 && mainState == STATE_MOTION){
         // blink the right side lights at 1Hz
         LATFbits.LATF1 = !LATFbits.LATF1;
         counterBlink = 0;
+        return;
     }
+    T3CONbits.TON = 1; // start the timer
 }
 
 void stop_motion(){
@@ -421,7 +428,7 @@ void motor_pwm(float y){
 
 void lights_motion(float sg, float yr){
     // Set the lights
-    if(sg >= 50){
+    if(sg >= 50.0){
         LATFbits.LATF0 = 0; 
         LATGbits.LATG1 = 0;
         LATAbits.LATA7 = 1; // beam lights on
@@ -431,10 +438,11 @@ void lights_motion(float sg, float yr){
         LATAbits.LATA7 = 0; 
     }
 
-    if (yr > 15){
+    if (yr > 15.0){
         // blink the left side lights at 1Hz
-        TMR3 = 0.0;
-        T3CONbits.TON = 1;
+        if (counterBlink == 0){
+            T3CONbits.TON = 1;
+        }
     }
     else {
         // stop the timer3
@@ -656,7 +664,7 @@ int main(void){
 
     // set the timer for the main at 1kHz
     tmr_setup_period(TIMER2, 1); // set the timer to 1ms
-    tmr_setup_period(TIMER3, 500); // set the timer to 500ms
+    tmr_setup_period(TIMER3, 200); // set the timer to 500ms
     IEC0bits.T3IE = 1; // Enable Timer3 (T3IE) interrupt
 
     float distance = 0.0;
@@ -664,9 +672,10 @@ int main(void){
     {
         if (mainState == STATE_WAIT){
             // Wait for the interrupt
-            stop_motion();
-            TMR3 = 0.0;
-            T3CONbits.TON = 1;
+            stop_motion();  
+            if (counterBlink == 0){
+                T3CONbits.TON = 1;
+            }
         }
         else if (mainState == STATE_MOTION){
             // Move the buggy
