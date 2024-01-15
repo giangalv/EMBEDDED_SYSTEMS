@@ -58,6 +58,12 @@ typedef struct {
 	int index_payload;
 } parser_state;
 
+// Structure definition for the thresholds to be set and considered for PWM.
+typedef struct {
+    int minth;
+    int maxth;
+} threshold_data;
+
 volatile parser_state ps;
 struct circular_buffer cb;                      // Our circular buffer
 volatile threshold_data sdata;
