@@ -3,6 +3,7 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
+#include "stdbool.h"
 
 #define FOSC 144000000.0 //Hz Clock breadboard
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
@@ -14,7 +15,7 @@
 #define STATE_WAIT 0
 #define STATE_MOTION 1
 #define SIZE_OF_BUFFER_RC 7
-#define SIZE_OF_MESSAGE_TR 54
+#define SIZE_OF_BUFFER_TR 54
 
 #define STATE_DOLLAR  (1) // we discard everything until a dollar is found
 #define STATE_TYPE    (2) // we are reading the type of msg until a comma is found
@@ -56,9 +57,16 @@ int next_value(const char* msg, int i);
 void initBuffer();
 void push(char receivedChar, bool bufferSelection);
 void pull(bool bufferSelection);
-struct circular_buffer {
+struct rc_circular_buffer {
     // Struct that contains only the usefull information that we need from the buffer
-    char buffer[SIZE_OF_BUFFER];                // Buffer
+    char buffer[SIZE_OF_BUFFER_RC];                // Buffer
+    int bufferLength;                           // Different from the SIZE_OF_BUFFER, it's 'writeIndex - readIndex', the number of bytes that we still have to read
+    int readIndex;
+    int writeIndex;
+};
+struct tr_circular_buffer {
+    // Struct that contains only the usefull information that we need from the buffer
+    char buffer[SIZE_OF_BUFFER_TR];                // Buffer
     int bufferLength;                           // Different from the SIZE_OF_BUFFER, it's 'writeIndex - readIndex', the number of bytes that we still have to read
     int readIndex;
     int writeIndex;
@@ -79,8 +87,8 @@ typedef struct {
 } threshold_data;
 
 // GLOBAL VARIABLES
-struct circular_buffer cb_reception; 
-struct circular_buffer cb_transmission;
+struct rc_circular_buffer cb_reception; 
+struct tr_circular_buffer cb_transmission;
 volatile parser_state ps;                    
 volatile threshold_data sdata;
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
@@ -484,7 +492,7 @@ void send_battery_voltage(float *v_battery){
     // Function to send the battery voltage to the UART
     int size = 13;
     char message[size];
-    sprintf(message; "$MBATT,%.2f*", *v_battery);
+    sprintf(message, "$MBATT,%.2f*", *v_battery);
     char ch = ' ';
 
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
@@ -497,7 +505,7 @@ void send_distance(int *cm_distance){
     // Function to send the distance to the UART
     int size = 11;
     char message[size];
-    sprintf(message; "$MDIST,%d*", *cm_distance);
+    sprintf(message, "$MDIST,%d*", *cm_distance);
     char ch = ' ';
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
         ch = message[i];
@@ -509,7 +517,7 @@ void send_duty_cycle(int *dc1, int *dc2, int *dc3, int *dc4){
     // Function to send the duty cycle to the UART
     int size = 28;
     char message[size];
-    sprintf(message; "$MDUTY,%d,%d,%d,%d*", *dc1, *dc2, *dc3, *dc4);
+    sprintf(message, "$MDUTY,%d,%d,%d,%d*", *dc1, *dc2, *dc3, *dc4);
     char ch = ' ';
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
         ch = message[i];
@@ -745,7 +753,7 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
     if(U2STAbits.URXDA == 1){                     // If there are data to be read
         IEC1bits.U2RXIE = 0;                      // Disable interrupt for UART2 reception
         char receivedData = U2RXREG;              // Read
-        push(receivedData);                       // Push
+        push(receivedData, true);                 // Push
         IEC1bits.U2RXIE = 1;                       // Push
     }    
 }
