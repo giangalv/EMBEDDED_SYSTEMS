@@ -22,11 +22,12 @@
 #define NEW_MESSAGE (1) // new message received and parsed completely
 #define NO_MESSAGE (0) // no new messages
 
-// Function timers
+// FUNCTIONS DECLARATION
+// Timers
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
 void tmr_wait_ms(int timer, int ms);
-// interrupt functions
+// interrupts
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
 void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
 void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt();
@@ -37,7 +38,7 @@ void motor_pwm(float y);
 // ADC
 void ADC_initialization();
 float acquisition_ADC();
-// ligtts
+// lights
 void leds_initialization();
 void lights_motion(float sg, float yr);
 void lights_off();
@@ -45,18 +46,13 @@ void lights_off();
 void bottoms_initialization();
 // UART
 void UART_initialization();
+// Parser
+int extract_integer(const char* str);
+int next_value(const char* msg, int i);
 // Circular buffer
 void initBuffer();
 void push(char receivedChar);
 void pull();
-// Parser
-int extract_integer(const char* str);
-int next_value(const char* msg, int i);
-
-int mainState = STATE_WAIT; // 0 = wait, 1 = move
-int counterBlink = 0;
-
-// CIRCULAR BUFFER
 struct circular_buffer {
     // Struct that contains only the usefull information that we need from the buffer
     char buffer[SIZE_OF_BUFFER];                // Buffer
@@ -64,7 +60,6 @@ struct circular_buffer {
     int readIndex;
     int writeIndex;
 };
-
 typedef struct { 
 	int state;
 	char msg_type[6]; // type is 5 chars + string terminator
@@ -72,18 +67,22 @@ typedef struct {
 	int index_type;
 	int index_payload;
 } parser_state;
+
 int parse_byte(parser_state* ps, char byte);
 
-// Structure definition for the thresholds to be set and considered for PWM.
 typedef struct {
     int minth;
     int maxth;
 } threshold_data;
 
+// GLOBAL VARIABLES
 struct circular_buffer cb; 
 volatile parser_state ps;                    
 volatile threshold_data sdata;
+int mainState = STATE_WAIT; // 0 = wait, 1 = move
+int counterBlink = 0;
 
+// FUNCTIONS DEFINITION
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
 // this is too high to be put in a 16 bit register (max 65535) so we have to set a prescaler
