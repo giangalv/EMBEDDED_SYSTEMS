@@ -363,9 +363,21 @@ float acquisition_ADC(){
     return y, battery;
 }
 
-// Function to calculate the threshold based on our empirical data..
-float threshold_calculation(int y_cm){
-    return (float) ((0.016 * y_cm) - 0.025);
+float threshold_calculation(int x_cm){
+    /*
+    * Function to calculate the threshold for the IR sensor:
+    * Based on our empirical measurements, we have found approximately the relation between the distance and the ADC value.
+    * These are the values that we have found:
+    * 0.6 = 38cm
+    * 0.5 = 32cm
+    * 0.4 = 26cm
+    * 0.3 = 20cm
+    * 0.2 = 15cm
+    * 0.14 = 10cm
+    * A function that in our opinion fits well these values is the following:
+    * y = 0.016*x - 0.025  ->  where 'y' is the ADC value and 'x' is the distance in cm
+    */
+    return (float) ((0.016 * x_cm) - 0.025);
 }
 
 int motor_pwm(float y){
@@ -629,20 +641,18 @@ void buffers_initialization(){
 
 void push(char receivedChar, bool bufferSelection) {
     /*
-     * Pushes characters received from UART into the circular buffer for writing.
-     * If the circular buffer overflows, characters will be lost.
+     * Pushes characters received from UART into the circular buffer.
+     * As we have two circular buffers, we have to select which one we want to use with the boolean 'bufferSelection'.
+     * If the buffer is full, we don't push other characters.
      */
     if (bufferSelection == true){
         if (cb_reception.bufferLength == SIZE_OF_BUFFER_RC) {
-            // Buffer is full, cannot push more characters
             return;
         } 
         else {
-            // Push the character into the buffer
             cb_reception.buffer[cb_reception.writeIndex] = receivedChar;
             cb_reception.bufferLength++;
             cb_reception.writeIndex++;
-
             // Wrap around if the writeIndex exceeds the buffer size
             if (cb_reception.writeIndex == SIZE_OF_BUFFER_RC) {
                 cb_reception.writeIndex = 0;
@@ -651,15 +661,12 @@ void push(char receivedChar, bool bufferSelection) {
     }
     else if (bufferSelection == false){
         if (cb_transmission.bufferLength == SIZE_OF_BUFFER_TR) {
-            // Buffer is full, cannot push more characters
             return;
         } 
         else {
-            // Push the character into the buffer
             cb_transmission.buffer[cb_transmission.writeIndex] = receivedChar;
             cb_transmission.bufferLength++;
             cb_transmission.writeIndex++;
-
             // Wrap around if the writeIndex exceeds the buffer size
             if (cb_transmission.writeIndex == SIZE_OF_BUFFER_TR) {
                 cb_transmission.writeIndex = 0;
@@ -671,14 +678,14 @@ void push(char receivedChar, bool bufferSelection) {
 
 void pull(bool bufferSelection) {
     /*
-     * Takes out all characters from the circular buffer and sends them to 'printFunctionFirstRow',
-     * which will print them. When the circular buffer is empty, and the UART is not sending characters,
-     * 'convertNumberToString' writes the number of characters printed on the second row of the LCD.
+     * Takes out all characters from the circular buffers:
+     * as we have two circular buffers, we have to select which one we want to use with the boolean 'bufferSelection'.
+     * With the 'cb_reception' buffer, we parse the message (with 'parse_byte') and we acquire the payload (with 'parse_pcth') into sdata.minth and maxth.
+     * With the 'cb_transmission' buffer, we send the data to the UART.
      */
     if (bufferSelection == true){
         while (cb_reception.bufferLength > 0) {
             if (cb_reception.bufferLength == 0) {
-                // Buffer is empty
                 return;
             } 
             else {
@@ -686,14 +693,12 @@ void pull(bool bufferSelection) {
                 char receivedChar = cb_reception.buffer[cb_reception.readIndex];
                 cb_reception.bufferLength--;
                 cb_reception.readIndex++;
-
                 // Wrap around if the readIndex exceeds the buffer size
                 if (cb_reception.readIndex == SIZE_OF_BUFFER_RC) {
                     cb_reception.readIndex = 0;
                 }
                 int message = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
                 IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
-                
                 if (message == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
                     if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
                         parse_pcth(ps.msg_payload, &sdata);
@@ -705,7 +710,6 @@ void pull(bool bufferSelection) {
     else if (bufferSelection == false){
         while (cb_transmission.bufferLength > 0) {
             if (cb_transmission.bufferLength == 0) {
-                // Buffer is empty
                 return;
             } 
             else {
@@ -713,7 +717,6 @@ void pull(bool bufferSelection) {
                 char receivedChar = cb_transmission.buffer[cb_transmission.readIndex];
                 cb_transmission.bufferLength--;
                 cb_transmission.readIndex++;
-
                 // Wrap around if the readIndex exceeds the buffer size
                 if (cb_transmission.readIndex == SIZE_OF_BUFFER_TR) {
                     cb_transmission.readIndex = 0;
