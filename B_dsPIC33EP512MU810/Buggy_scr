@@ -34,13 +34,30 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt();
 void PWM_initialization();
 void stop_motion();
 void motor_pwm(float y);
+float threshold_calculation(float y_cm);
 // ADC
 void ADC_initialization();
 float acquisition_ADC();
+// ligtts
+void leds_initialization();
+void lights_motion(float sg, float yr);
+void lights_off();
+// buttons
+void bottoms_initialization();
+// UART
+void UART_initialization();
+// Circular buffer
+void initBuffer();
+void push(char receivedChar);
+void pull();
+// Parser
+int parse_byte(parser_state* ps, char byte);
+int extract_integer(const char* str);
+int next_value(const char* msg, int i);
+void parse_pcth(const char* msg, volatile threshold_data* sdata);
 
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
 int counterBlink = 0;
-
 
 // CIRCULAR BUFFER
 struct circular_buffer {
