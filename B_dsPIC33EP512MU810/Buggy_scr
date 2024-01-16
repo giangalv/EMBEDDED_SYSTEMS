@@ -34,7 +34,7 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt();
 // PWM
 void PWM_initialization();
 void stop_motion();
-void motor_pwm(float y);
+int motor_pwm(float y);
 // ADC
 void ADC_initialization();
 float acquisition_ADC();
@@ -351,8 +351,8 @@ float acquisition_ADC(){
     // We calculate the current perceived distance and battery voltage
     float V = (float) ADC1BUF1*(3.3 - 0)/1024;
     float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4); 
-    //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024; // The times 3 is because of the resistor partitioning 
-    return y;
+    float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024; // The times 3 is because of the resistor partitioning 
+    return y, battery;
     /*
     * values of y for different distances
     * 0.6 = 38cm
@@ -369,7 +369,7 @@ float threshold_calculation(int y_cm){
     return (float) ((0.016 * y_cm) - 0.025);
 }
 
-void motor_pwm(float y){
+int motor_pwm(float y){
     // Set the fin for a 10kHz PWM control
     // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
 
@@ -431,14 +431,14 @@ void motor_pwm(float y){
     else{ // if there is an error stop the motion
         stop_motion();
         lights_off();
-        return;
+        return 0, 0, 0, 0;
     }
     OC2R  = left_pwm1;
     OC4R  = right_pwm1;
     OC1R  = left_pwm2;
     OC3R  = right_pwm2;
 
-    return;
+    return left_pwm2, left_pwm1, right_pwm2, right_pwm1;
 }
 
 void lights_motion(float sg, float yr){
@@ -767,7 +767,8 @@ int main(void){
     tmr_setup_period(TIMER3, 200); // set the timer to 200ms
     IEC0bits.T3IE = 1; // Enable Timer3 (T3IE) interrupt
 
-    float distance = 0.0;
+    float distance, battery = 0.0;
+    int dc1, dc2, dc3, dc4, count, hz10 = 0;
     
     // Parser state initialization:
     ps.state = STATE_DOLLAR; 
@@ -786,11 +787,12 @@ int main(void){
             if (counterBlink == 0){
                 T3CONbits.TON = 1;
             }
+            dc1, dc2, dc3, dc4 = 0;
         }
         else if (mainState == STATE_MOTION){
             // Move the buggy
-            distance = acquisition_ADC();
-            motor_pwm(distance);
+            distance, battery = acquisition_ADC();
+            dc1, dc2, dc3, dc4 = motor_pwm(distance);
         }
 
         // Check if there are characters in UART2 buffer
@@ -804,16 +806,15 @@ int main(void){
 
         // trasmission of the data
         if(hz10 == 1){ //10Hz - 100ms Tasks
-            int count = count + 1;
-            int dist = (int) 100*y;
+            count++;
             
-            print_uart_d(&dist);
-            print_uart_dc(&dutyCycle1, &dutyCycle2, &dutyCycle3, &dutyCycle4);
+            send_distance((int)&distance);
+            send_duty_cycle(&dc1, &dc2, &dc3, &dc4);
             
             hz10 = 0; // Re-set the flag
 
             if (count % 10 == 0){
-                print_uart_s(&battery);
+                send_battery_voltage(&battery);
             }
         }
         pull(false);
