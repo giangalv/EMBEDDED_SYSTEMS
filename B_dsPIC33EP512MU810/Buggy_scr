@@ -75,7 +75,6 @@ typedef struct {
 	int index_type;
 	int index_payload;
 } parser_state;
-
 int parse_byte(parser_state* ps, char byte);
 
 // Structure definition for the thresholds to be set and considered for PWM.
@@ -84,8 +83,8 @@ typedef struct {
     int maxth;
 } threshold_data;
 
-volatile parser_state ps;
-struct circular_buffer cb;                      // Our circular buffer
+struct circular_buffer cb; 
+volatile parser_state ps;                    
 volatile threshold_data sdata;
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
