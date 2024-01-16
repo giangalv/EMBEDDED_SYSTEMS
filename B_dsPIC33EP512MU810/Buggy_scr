@@ -22,8 +22,7 @@
 #define NEW_MESSAGE (1) // new message received and parsed completely
 #define NO_MESSAGE (0) // no new messages
 
-
-// Function prototypes
+// Function timers
 void tmr_setup_period(int timer, int ms);
 void tmr_wait_period(int timer);
 void tmr_wait_ms(int timer, int ms);
