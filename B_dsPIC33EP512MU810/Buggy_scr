@@ -2,6 +2,7 @@
 #include "math.h"
 #include "stdio.h"
 #include "stdlib.h"
+#include "string.h"
 
 #define FOSC 144000000.0 //Hz Clock breadboard
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
@@ -34,7 +35,6 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt();
 void PWM_initialization();
 void stop_motion();
 void motor_pwm(float y);
-float threshold_calculation(float y_cm);
 // ADC
 void ADC_initialization();
 float acquisition_ADC();
@@ -51,10 +51,8 @@ void initBuffer();
 void push(char receivedChar);
 void pull();
 // Parser
-int parse_byte(parser_state* ps, char byte);
 int extract_integer(const char* str);
 int next_value(const char* msg, int i);
-void parse_pcth(const char* msg, volatile threshold_data* sdata);
 
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
 int counterBlink = 0;
@@ -365,6 +363,11 @@ float acquisition_ADC(){
     */
 }
 
+// Function to calculate the threshold based on our empirical data..
+float threshold_calculation(int y_cm){
+    return (float) ((0.016 * y_cm) - 0.025);
+}
+
 void motor_pwm(float y){
     // Set the fin for a 10kHz PWM control
     // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
@@ -378,8 +381,8 @@ void motor_pwm(float y){
     int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
     
     int left_pwm1, right_pwm1, left_pwm2, right_pwm2;
-    float MIN = threshold_calculation(sdata->minth); // 15cm -> ~0.2
-    float MAX = threshold_calculation(sdata->maxth); // 38cm -> ~0.6
+    float MIN = threshold_calculation((int)sdata.minth); // 15cm -> ~0.2
+    float MAX = threshold_calculation((int)sdata.maxth); // 38cm -> ~0.6
     float sg, yr = 0.0;
 
     if (y < MIN){ // rotate left
@@ -437,15 +440,9 @@ void motor_pwm(float y){
     return;
 }
 
-// Function to calculate the threshold based on our empirical data..
-float threshold_calculation(float y_cm){
-    float threshold = (float) ((0.016 * y_cm) - 0.025);
-    return threshold;
-}
-
 void lights_motion(float sg, float yr){
     // Set the lights
-    if(sg >= 50.0){
+    if (sg >= 50.0){
         LATFbits.LATF0 = 0; 
         LATGbits.LATG1 = 0;
         LATAbits.LATA7 = 1; // beam lights on
