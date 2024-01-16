@@ -46,6 +46,9 @@ void lights_off();
 void bottoms_initialization();
 // UART
 void UART_initialization();
+void send_battery_voltage(float *v_battery);
+void send_distance(int *cm_distance);
+void send_duty_cycle(int *dc1, int *dc2, int *dc3, int *dc4);
 // Parser
 int extract_integer(const char* str);
 int next_value(const char* msg, int i);
@@ -252,7 +255,6 @@ int next_value(const char* msg, int i) {
   }
   return i;
 }
-
 
 void parse_pcth(const char* msg, volatile threshold_data* sdata){
   int i = 0;
@@ -475,6 +477,43 @@ void lights_off(){
     LATFbits.LATF0 = 0; 
     LATGbits.LATG1 = 0; 
     LATAbits.LATA7 = 0;
+}
+
+void send_battery_voltage(float *v_battery){
+    // Function to send the battery voltage to the UART
+    int size = 13;
+    char message[size];
+    sprintf(message; "$MBATT,%.2f", *v_battery);
+    char ch = ' ';
+
+    for (int i = 0; i < size && message[i] != '\0'; i++){ 
+        ch = message[i];
+        // PUSH THE CHARACTER INTO THE BUFFER 
+    }
+}
+
+void send_distance(int *cm_distance){
+    // Function to send the distance to the UART
+    int size = 10;
+    char message[size];
+    sprintf(message; "$MDIST,%d", *cm_distance);
+    char ch = ' ';
+    for (int i = 0; i < size && message[i] != '\0'; i++){ 
+        ch = message[i];
+        // PUSH THE CHARACTER INTO THE BUFFER
+    }
+}
+
+void send_duty_cycle(int *dc1, int *dc2, int *dc3, int *dc4){
+    // Function to send the duty cycle to the UART
+    int size = 27;
+    char message[size];
+    sprintf(message; "$MDUTY,%d,%d,%d,%d", *dc1, *dc2, *dc3, *dc4);
+    char ch = ' ';
+    for (int i = 0; i < size && message[i] != '\0'; i++){ 
+        ch = message[i];
+        // PUSH THE CHARACTER INTO THE BUFFER
+    }
 }
 
 void bottoms_initialization(){
