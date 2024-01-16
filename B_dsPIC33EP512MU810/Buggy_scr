@@ -13,8 +13,8 @@
 #define TIMER5 5
 #define STATE_WAIT 0
 #define STATE_MOTION 1
-#define SIZE_OF_BUFFER 7
-#define SIZE_OF_MESSAGE_BUFFER 54
+#define SIZE_OF_BUFFER_RC 7
+#define SIZE_OF_MESSAGE_TR 54
 
 #define STATE_DOLLAR  (1) // we discard everything until a dollar is found
 #define STATE_TYPE    (2) // we are reading the type of msg until a comma is found
@@ -54,8 +54,8 @@ int extract_integer(const char* str);
 int next_value(const char* msg, int i);
 // Circular buffer
 void initBuffer();
-void push(char receivedChar);
-void pull();
+void push(char receivedChar, bool bufferSelection);
+void pull(bool bufferSelection);
 struct circular_buffer {
     // Struct that contains only the usefull information that we need from the buffer
     char buffer[SIZE_OF_BUFFER];                // Buffer
@@ -79,7 +79,8 @@ typedef struct {
 } threshold_data;
 
 // GLOBAL VARIABLES
-struct circular_buffer cb; 
+struct circular_buffer cb_reception; 
+struct circular_buffer cb_transmission;
 volatile parser_state ps;                    
 volatile threshold_data sdata;
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
@@ -622,64 +623,111 @@ void UART_initialization(){
     RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
 }
 
-void initBuffer(){
+void buffers_initialization(){
     // Function to initialize the circular buffer
-    cb.bufferLength = 0;
-    cb.readIndex = 0;
-    cb.writeIndex = 0;
+    cb_reception.bufferLength = 0;
+    cb_reception.readIndex = 0;
+    cb_reception.writeIndex = 0;
+    cb_transmission.bufferLength = 0;
+    cb_transmission.readIndex = 0;
+    cb_transmission.writeIndex = 0;
 }
 
-void push(char receivedChar) {
+void push(char receivedChar, bool bufferSelection) {
     /*
      * Pushes characters received from UART into the circular buffer for writing.
      * If the circular buffer overflows, characters will be lost.
      */
+    if (bufferSelection == true){
+        if (cb_reception.bufferLength == SIZE_OF_BUFFER_RC) {
+            // Buffer is full, cannot push more characters
+            return;
+        } 
+        else {
+            // Push the character into the buffer
+            cb_reception.buffer[cb_reception.writeIndex] = receivedChar;
+            cb_reception.bufferLength++;
+            cb_reception.writeIndex++;
 
-    if (cb.bufferLength == SIZE_OF_BUFFER) {
-        // Buffer is full, cannot push more characters
-        return;
-    } 
-    else {
-        // Push the character into the buffer
-        cb.buffer[cb.writeIndex] = receivedChar;
-        cb.bufferLength++;
-        cb.writeIndex++;
-
-        // Wrap around if the writeIndex exceeds the buffer size
-        if (cb.writeIndex == SIZE_OF_BUFFER) {
-            cb.writeIndex = 0;
+            // Wrap around if the writeIndex exceeds the buffer size
+            if (cb_reception.writeIndex == SIZE_OF_BUFFER_RC) {
+                cb_reception.writeIndex = 0;
+            }
         }
     }
+    else if (bufferSelection == false){
+        if (cb_transmission.bufferLength == SIZE_OF_BUFFER_TR) {
+            // Buffer is full, cannot push more characters
+            return;
+        } 
+        else {
+            // Push the character into the buffer
+            cb_transmission.buffer[cb_transmission.writeIndex] = receivedChar;
+            cb_transmission.bufferLength++;
+            cb_transmission.writeIndex++;
+
+            // Wrap around if the writeIndex exceeds the buffer size
+            if (cb_transmission.writeIndex == SIZE_OF_BUFFER_TR) {
+                cb_transmission.writeIndex = 0;
+            }
+        }
+    }
+
 }
 
-void pull() {
+void pull(bool bufferSelection) {
     /*
      * Takes out all characters from the circular buffer and sends them to 'printFunctionFirstRow',
      * which will print them. When the circular buffer is empty, and the UART is not sending characters,
      * 'convertNumberToString' writes the number of characters printed on the second row of the LCD.
      */
+    if (bufferSelection == true){
+        while (cb_reception.bufferLength > 0) {
+            if (cb_reception.bufferLength == 0) {
+                // Buffer is empty
+                return;
+            } 
+            else {
+                IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
+                char receivedChar = cb_reception.buffer[cb_reception.readIndex];
+                cb_reception.bufferLength--;
+                cb_reception.readIndex++;
 
-    while (cb.bufferLength > 0) {
-        if (cb.bufferLength == 0) {
-            // Buffer is empty
-            return;
-        } 
-        else {
-            IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
-            char receivedChar = cb.buffer[cb.readIndex];
-            cb.bufferLength--;
-            cb.readIndex++;
-
-            // Wrap around if the readIndex exceeds the buffer size
-            if (cb.readIndex == SIZE_OF_BUFFER) {
-                cb.readIndex = 0;
+                // Wrap around if the readIndex exceeds the buffer size
+                if (cb_reception.readIndex == SIZE_OF_BUFFER_RC) {
+                    cb_reception.readIndex = 0;
+                }
+                int message = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
+                IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
+                
+                if (message == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
+                    if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
+                        parse_pcth(ps.msg_payload, &sdata);
+                    }
+                }
             }
-            int message = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
-            IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
-            
-            if (message == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
-                if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
-                    parse_pcth(ps.msg_payload, &sdata);
+        }
+    }
+    else if (bufferSelection == false){
+        while (cb_transmission.bufferLength > 0) {
+            if (cb_transmission.bufferLength == 0) {
+                // Buffer is empty
+                return;
+            } 
+            else {
+                //IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
+                char receivedChar = cb_transmission.buffer[cb_transmission.readIndex];
+                cb_transmission.bufferLength--;
+                cb_transmission.readIndex++;
+
+                // Wrap around if the readIndex exceeds the buffer size
+                if (cb_transmission.readIndex == SIZE_OF_BUFFER_TR) {
+                    cb_transmission.readIndex = 0;
+                }
+                //IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
+                // If the buffer is not full, send the data
+                if (U2STAbits.UTXBF == 0){
+                    U2TXREG = receivedChar;
                 }
             }
         }
@@ -702,7 +750,6 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
     }    
 }
 
-
 int main(void){
     ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
 
@@ -712,6 +759,7 @@ int main(void){
     PWM_initialization();
     ADC_initialization();    
     UART_initialization();
+    buffers_initialization();
 
     // set the timer for the main at 1kHz
     tmr_setup_period(TIMER2, 1); // set the timer to 1ms
@@ -720,11 +768,6 @@ int main(void){
     IEC0bits.T3IE = 1; // Enable Timer3 (T3IE) interrupt
 
     float distance = 0.0;
-
-    // Circular buffer initialization:
-    cb.writeIndex = 0;
-    cb.readIndex = 0;
-    cb.bufferLength = 0;
     
     // Parser state initialization:
     ps.state = STATE_DOLLAR; 
@@ -749,14 +792,31 @@ int main(void){
             distance = acquisition_ADC();
             motor_pwm(distance);
         }
+
         // Check if there are characters in UART2 buffer
         if (U2STAbits.URXDA == 1) {   
             IEC1bits.U2RXIE = 0;         // Disable interrupt for UART2 reception
             char receivedData = U2RXREG; // Read from UART2
-            push(receivedData);   
+            push(receivedData, true);   
             IEC1bits.U2RXIE = 1;         // Enable UART2 reception interrupt
         }
-        pull();
+        pull(true);
+
+        // trasmission of the data
+        if(hz10 == 1){ //10Hz - 100ms Tasks
+            int count = count + 1;
+            int dist = (int) 100*y;
+            
+            print_uart_d(&dist);
+            print_uart_dc(&dutyCycle1, &dutyCycle2, &dutyCycle3, &dutyCycle4);
+            
+            hz10 = 0; // Re-set the flag
+
+            if (count % 10 == 0){
+                print_uart_s(&battery);
+            }
+        }
+        pull(false);
 
         IFS0bits.T2IF = 0;        
         T2CONbits.TON = 1;  
