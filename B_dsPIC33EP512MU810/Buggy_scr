@@ -89,16 +89,7 @@ volatile threshold_data sdata;
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
-// this is too high to be put in a 16 bit register (max 65535)
-// we set the millisec value and the max value for that breadboard is more or less 0.582 (<582ms) seconds
-// If we set ms = 500 we have 144000000/2 * 500/1000 = 36000000 clock steps
-// this is too high to be put in a 16 bit register (max 65535)
-// If we set a prescaler of 1:8 we have 36000000/8 = 4500000 clock steps
-// this is too high to be put in a 16 bit register (max 65535)
-// If then we set a prescaler of 1:64 we have 36000000/64 = 562500 clock steps
-// this is too high to be put in a 16 bit register (max 65535)
-// If then we set a prescaler of 1:256 we have 36000000/256 = 140625 clock steps
-// this is ok to be put in a 16 bit register (max 65535)
+// this is too high to be put in a 16 bit register (max 65535) so we have to set a prescaler
 
     double Fcy = FOSC / 2.0;
     double clock_steps = Fcy * (ms/1000.0);
