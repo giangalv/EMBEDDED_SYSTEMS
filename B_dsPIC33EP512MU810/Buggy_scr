@@ -64,6 +64,12 @@ struct rc_circular_buffer {
     int readIndex;
     int writeIndex;
 };
+
+struct threshold_data{
+    int minth;
+    int maxth;
+};
+
 struct tr_circular_buffer {
     // Struct that contains only the usefull information that we need from the buffer
     char buffer[SIZE_OF_BUFFER_TR];              // Buffer
@@ -81,16 +87,11 @@ typedef struct {
 
 int parse_byte(parser_state* ps, char byte);
 
-typedef struct {
-    int minth;
-    int maxth;
-} threshold_data;
-
 // GLOBAL VARIABLES
 struct rc_circular_buffer cb_reception; 
 struct tr_circular_buffer cb_transmission;
+struct threshold_data sdata;
 volatile parser_state ps;                    
-volatile threshold_data sdata;
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
 int counterBlink = 0;
 
