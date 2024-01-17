@@ -266,7 +266,7 @@ int next_value(const char* msg, int i) {
   return i;
 }
 
-void parse_pcth(const char* msg, struct threshold_data* sdata){
+void parse_pcth(const char* msg, struct threshold_data sdata){
   int i = 0;
   sdata->minth = extract_integer(msg);
   i = next_value(msg, i);
@@ -702,7 +702,7 @@ void pull(bool bufferSelection) {
                 IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
                 if (message == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
                     if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
-                        parse_pcth(ps.msg_payload, &sdata);
+                        parse_pcth(ps.msg_payload, sdata);
                     }
                 }
             }
