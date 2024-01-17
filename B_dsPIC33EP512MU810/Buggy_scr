@@ -360,7 +360,7 @@ float acquisition_ADC(){
     } while (!AD1CON1bits.DONE);                                    // Wait for the conversion to complete
     float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
     float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance
-    float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
+    //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
     return y, battery;
 }
 
@@ -381,7 +381,7 @@ float threshold_calculation(int x_cm){
     return (float) ((0.016 * x_cm) - 0.025);
 }
 
-int motor_pwm(float* y){
+int motor_pwm(float y){
     /*
     * Function to calculate the duty cycle for the motors based on the distance acquired from the ADC sensor
     * and the threshold calculated from the empirical data. The duty cycle is calculated as a percentage of the
@@ -398,7 +398,7 @@ int motor_pwm(float* y){
     float MAX = threshold_calculation(sdata.maxth); // 38cm -> ~0.6
     float sg, yr = 0.0; // Variables to set the lights based on the distance acquired from the ADC sensor
     // Check if the distance is in the desired range
-    if (*y < MIN){  // Pure right rotation
+    if (y < MIN){  // Pure right rotation
         sg = 0;  
         yr = 100;  
         left_pwm1 = maxVel;
@@ -407,7 +407,7 @@ int motor_pwm(float* y){
         right_pwm2 = maxVel;
         lights_motion(sg, yr); // Set the lights
     }
-    else if (*y > MAX){ // Move forward
+    else if (y > MAX){ // Move forward
         sg = 100;
         yr = 0;
         left_pwm1 = maxVel;
@@ -416,9 +416,9 @@ int motor_pwm(float* y){
         right_pwm2 = 0;
         lights_motion(sg, yr); // Set the lights
     }
-    else if (*y <= MAX && *y >= MIN){ // Turn right
-        sg = (int) (100*(*y-MIN)/(MAX-MIN)); 
-        yr = (int) (100*(MAX-*y)/(MAX-MIN)); 
+    else if (y <= MAX && y >= MIN){ // Turn right
+        sg = (int) (100*(y-MIN)/(MAX-MIN)); 
+        yr = (int) (100*(MAX-y)/(MAX-MIN)); 
         // Linear velocity decrease and dependant on the distance
         left_pwm1 = (int) (sg*minVel/100);  
         right_pwm1 = (int) (sg*minVel/100); 
@@ -789,8 +789,8 @@ int main(void){
         }
         else if (mainState == STATE_MOTION){
             // Move the buggy
-            distance, battery = acquisition_ADC();
-            dc1, dc2, dc3, dc4 = motor_pwm(&distance);
+            distance = acquisition_ADC();
+            dc1, dc2, dc3, dc4 = motor_pwm(distance);
         }
 
         // Check if there are characters in UART2 buffer
