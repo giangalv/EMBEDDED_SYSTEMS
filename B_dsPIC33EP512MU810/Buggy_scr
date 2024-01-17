@@ -266,7 +266,7 @@ int next_value(const char* msg, int i) {
   return i;
 }
 
-void parse_pcth(const char* msg, volatile threshold_data* sdata){
+void parse_pcth(const char* msg, struct threshold_data* sdata){
   int i = 0;
   sdata->minth = extract_integer(msg);
   i = next_value(msg, i);
@@ -394,8 +394,8 @@ int motor_pwm(float y){
     int maxVel = maxVelocityValue * 0.6; // 60% of the max velocity
     int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
     int left_pwm1, right_pwm1, left_pwm2, right_pwm2; // Duty cycle for the motors
-    float MIN = threshold_calculation((int)sdata.minth); // 15cm -> ~0.2
-    float MAX = threshold_calculation((int)sdata.maxth); // 38cm -> ~0.6
+    float MIN = threshold_calculation(sdata->minth); // 15cm -> ~0.2
+    float MAX = threshold_calculation(sdata->maxth); // 38cm -> ~0.6
     float sg, yr = 0.0; // Variables to set the lights based on the distance acquired from the ADC sensor
     // Check if the distance is in the desired range
     if (y < MIN){  // Pure right rotation
