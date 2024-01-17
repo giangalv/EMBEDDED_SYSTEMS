@@ -35,7 +35,7 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt();
 // PWM
 void PWM_initialization();
 void stop_motion();
-int motor_pwm(float y);
+int motor_pwm(float* y);
 // ADC
 void ADC_initialization();
 float acquisition_ADC();
@@ -268,9 +268,9 @@ int next_value(const char* msg, int i) {
 
 void parse_pcth(const char* msg, struct threshold_data sdata){
   int i = 0;
-  sdata->minth = extract_integer(msg);
+  sdata.minth = extract_integer(msg);
   i = next_value(msg, i);
-  sdata->maxth = extract_integer(msg + i);
+  sdata.maxth = extract_integer(msg + i);
 }
 
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt(){
@@ -381,7 +381,7 @@ float threshold_calculation(int x_cm){
     return (float) ((0.016 * x_cm) - 0.025);
 }
 
-int motor_pwm(float y){
+int motor_pwm(float* y){
     /*
     * Function to calculate the duty cycle for the motors based on the distance acquired from the ADC sensor
     * and the threshold calculated from the empirical data. The duty cycle is calculated as a percentage of the
@@ -394,11 +394,11 @@ int motor_pwm(float y){
     int maxVel = maxVelocityValue * 0.6; // 60% of the max velocity
     int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
     int left_pwm1, right_pwm1, left_pwm2, right_pwm2; // Duty cycle for the motors
-    float MIN = threshold_calculation(sdata->minth); // 15cm -> ~0.2
-    float MAX = threshold_calculation(sdata->maxth); // 38cm -> ~0.6
+    float MIN = threshold_calculation(sdata.minth); // 15cm -> ~0.2
+    float MAX = threshold_calculation(sdata.maxth); // 38cm -> ~0.6
     float sg, yr = 0.0; // Variables to set the lights based on the distance acquired from the ADC sensor
     // Check if the distance is in the desired range
-    if (y < MIN){  // Pure right rotation
+    if (*y < MIN){  // Pure right rotation
         sg = 0;  
         yr = 100;  
         left_pwm1 = maxVel;
@@ -407,7 +407,7 @@ int motor_pwm(float y){
         right_pwm2 = maxVel;
         lights_motion(sg, yr); // Set the lights
     }
-    else if (y > MAX){ // Move forward
+    else if (*y > MAX){ // Move forward
         sg = 100;
         yr = 0;
         left_pwm1 = maxVel;
@@ -416,9 +416,9 @@ int motor_pwm(float y){
         right_pwm2 = 0;
         lights_motion(sg, yr); // Set the lights
     }
-    else if (y <= MAX && y >= MIN){ // Turn right
-        sg = (int) (100*(y-MIN)/(MAX-MIN)); 
-        yr = (int) (100*(MAX-y)/(MAX-MIN)); 
+    else if (*y <= MAX && *y >= MIN){ // Turn right
+        sg = (int) (100*(*y-MIN)/(MAX-MIN)); 
+        yr = (int) (100*(MAX-*y)/(MAX-MIN)); 
         // Linear velocity decrease and dependant on the distance
         left_pwm1 = (int) (sg*minVel/100);  
         right_pwm1 = (int) (sg*minVel/100); 
@@ -588,7 +588,7 @@ void PWM_initialization(){
 void ADC_initialization(){
     // Configuration for ADC 
     AD1CON1bits.ADON = 1; // Enable the ADC
-    AD1CON3bits.ADCS = 14; // Select how long is the TAD, timing for the ADC, as a function of Fcy (TAD = TCY*(ADCS+1) = 15*15 = 225ns)
+    AD1CON3bits.ADCS = 14; // Select how long is the TAD, 14*Tcy = 3.5us
     // set auto sample time bits
     AD1CON1bits.ASAM = 0; // Sampling begins when SAMP bit is set
     AD1CON1bits.SSRC = 7; // Internal counter ends sampling and starts conversion (auto-convert)
@@ -603,12 +603,12 @@ void ADC_initialization(){
     TRISBbits.TRISB11 = 1; // Set pin RB11 as input
     ANSELBbits.ANSB11 = 1; // Set pin RB11 as analog input
     // IR distance sensor enable line
-    TRISBbits.TRISB9 = 0; // Set pin RB9 as output
-    LATBbits.LATB9 = 1; // Set pin RB9 as HIGH
+    TRISAbits.TRISA3 = 0; // Set pin RA3 as output
+    LATAbits.LATA3 = 1; // Set pin RA3 high to enable the sensor
     // Scan configuration
     AD1CON2bits.CSCNA = 1; // Scan inputs
-    AD1CSSLbits.CSS14 = 1; // Enable AN14 for scan
-    AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan
+    AD1CSSLbits.CSS15 = 1; // Enable AN14 for scan sensor
+    AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan battery
     AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
 }
 
@@ -790,7 +790,7 @@ int main(void){
         else if (mainState == STATE_MOTION){
             // Move the buggy
             distance, battery = acquisition_ADC();
-            dc1, dc2, dc3, dc4 = motor_pwm(distance);
+            dc1, dc2, dc3, dc4 = motor_pwm(&distance);
         }
 
         // Check if there are characters in UART2 buffer
