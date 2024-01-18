@@ -576,7 +576,7 @@ void motor_pwm(float y){
 
 // ADC FUNCTIONS //
 
-float acquisition_ADC(){
+float acquisition_ADC(bool flag_mes){
     /*
     * Function to acquire the data from the ADC sensor and calculate the distance and the battery voltage
     * The ADC is triggered to sample the data and when the conversion is done, the data are stored in the ADC1BUF0 and ADC1BUF1
@@ -585,10 +585,15 @@ float acquisition_ADC(){
         if (AD1CON1bits.SAMP == 0)
             AD1CON1bits.SAMP = 1;                                   // Start sampling again
     } while (!AD1CON1bits.DONE);                                    // Wait for the conversion to complete
-    float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
-    float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance
-    float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
-    return y, battery;
+    if (flag_mes == true){
+        float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
+        float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance
+        return y;
+    }
+    else if (flag_mes == false){
+        float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
+        return battery;
+    }
 }
 
 void send_battery_voltage(float *v_battery){
@@ -659,6 +664,7 @@ int main(void){
     IEC0bits.T3IE = 1; // Enable Timer3 (T3IE) interrupt
     // set timer4 at 10 Hz
     tmr_setup_period(TIMER4, 100); // set the timer to 100ms
+    IEC1bits.T4IE = 1; // Enable Timer4 (T4IE) interrupt
 
     float distance = 0.0;
     
@@ -680,8 +686,8 @@ int main(void){
     
     while (1)
     {
-        distance, battery = acquisition_ADC();
-        motor_pwm(distance);
+        distance = acquisition_ADC(true);
+        motor_pwm(distance);        
 
         // Check if there are characters in UART2 buffer
         if (U2STAbits.URXDA == 1) {   
@@ -702,14 +708,14 @@ int main(void){
             hz10 = 0; // Re-set the flag
 
             if (count % 10 == 0){
+                battery = acquisition_ADC(false);
                 send_battery_voltage(&battery);
                 count = 0;
             }
         }
-        while(U2STAbits.UTXBF == 0 && tr_circular_buffer.bufferLength > 0){
+        while(U2STAbits.UTXBF == 0 && cb_transmission.bufferLength > 0){
             pull(false);
         }
-
         IFS0bits.T2IF = 0;        
         T2CONbits.TON = 1;  
         tmr_wait_period(TIMER2);
