@@ -142,24 +142,6 @@ void ADC_initialization(){
     AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
 }
 
-void UART_initialization(){
-    // Configuration for UART
-    U2MODE = 0; // Clear UART2 mode register
-    U2STA = 0; // Clear UART2 status register
-    U2BRG = 157; // 28800 baud rate
-
-    U2MODEbits.UARTEN = 1; // Enable UART2
-    U2STAbits.UTXEN = 1; // Enable UART2 transmission
-    U2STAbits.URXISEL = 3; // Interrup when the buffer is full
-    IEC1bits.U2RXIE = 1; // Enable UART2 interrupt
-    U2STAbits.UTXISEL0 = 0; // Interrupt when the buffer is empty
-    U2STAbits.UTXISEL1 = 0; // Interrupt when the buffer is empty
-
-    // UART2 TX and RX pins
-    RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
-    RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
-}
-
 void initBuffer(){
     // Function to initialize the circular buffer
     cb.bufferLength = 0;
@@ -652,7 +634,22 @@ int main(void){
     bottoms_initialization();
     PWM_initialization();
     ADC_initialization();    
-    UART_initialization();
+    
+    // UART2 initialization
+    U2MODE = 0; // Clear UART2 mode register
+    U2STA = 0; // Clear UART2 status register
+    U2BRG = 157; // 28800 baud rate
+
+    U2MODEbits.UARTEN = 1; // Enable UART2
+    U2STAbits.UTXEN = 1; // Enable UART2 transmission
+    U2STAbits.URXISEL = 3; // Interrup when the buffer is full
+    IEC1bits.U2RXIE = 1; // Enable UART2 interrupt
+    U2STAbits.UTXISEL0 = 0; // Interrupt when the buffer is empty
+    U2STAbits.UTXISEL1 = 0; // Interrupt when the buffer is empty
+
+    // UART2 TX and RX pins
+    RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
+    RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
 
     // set the timer for the main at 1kHz
     tmr_setup_period(TIMER2, 1); // set the timer to 1ms
