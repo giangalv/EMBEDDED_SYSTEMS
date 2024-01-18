@@ -44,14 +44,14 @@ typedef struct {
 int parse_byte(parser_state* ps, char byte);
 
 // Structure definition for the thresholds to be set and considered for PWM.
-typedef struct {
+struct threshold_data {
     int minth;
     int maxth;
-} threshold_data;
+};
 
 volatile parser_state ps;
 struct circular_buffer cb;                      // Our circular buffer
-volatile threshold_data threshold;
+struct threshold_data threshold;
 
 // INITIALISATIONS FUNCTIONS //
 void bottoms_initialization(){
@@ -142,7 +142,7 @@ void ADC_initialization(){
     AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
 }
 
-void initBuffer(){
+void buffers_initialization(){
     // Function to initialize the circular buffer
     cb.bufferLength = 0;
     cb.readIndex = 0;
@@ -563,9 +563,11 @@ int next_value(const char* msg, int i) {
 
 void parse_pcth(const char* msg, volatile threshold_data* threshold){
   int i = 0;
-  threshold->minth = extract_integer(msg);
+  //threshold->minth = extract_integer(msg);
+  threshold.minth = extract_integer(msg);
   i = next_value(msg, i);
-  threshold->maxth = extract_integer(msg + i);
+  //threshold->maxth = extract_integer(msg + i);
+  threshold.maxth = extract_integer(msg + i);
 }
 
 // CIRCULAR BUFFER FUNCTIONS //
@@ -633,7 +635,8 @@ int main(void){
     leds_initialization();
     bottoms_initialization();
     PWM_initialization();
-    ADC_initialization();    
+    ADC_initialization();  
+    buffers_initialization();  
     
     // UART2 initialization
     U2MODE = 0; // Clear UART2 mode register
@@ -658,11 +661,6 @@ int main(void){
     IEC0bits.T3IE = 1; // Enable Timer3 (T3IE) interrupt
 
     float distance = 0.0;
-
-    // Circular buffer initialization:
-    cb.writeIndex = 0;
-    cb.readIndex = 0;
-    cb.bufferLength = 0;
     
     // Parser state initialization:
     ps.state = STATE_DOLLAR; 
