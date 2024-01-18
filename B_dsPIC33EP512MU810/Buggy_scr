@@ -21,36 +21,6 @@
 #define NEW_MESSAGE (1) // new message received and parsed completely
 #define NO_MESSAGE (0) // no new messages
 
-
-// Function prototypes
-void tmr_setup_period(int timer, int ms);
-void tmr_wait_period(int timer);
-void tmr_wait_ms(int timer, int ms);
-// interrupt functions
-void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
-void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
-void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt();
-// PWM
-void PWM_initialization();
-void stop_motion();
-void motor_pwm(float y);
-float threshold_calculation(float y_cm);
-// ADC
-void ADC_initialization();
-float acquisition_ADC();
-// ligtts
-void leds_initialization();
-void lights_motion(float sg, float yr);
-void lights_off();
-// buttons
-void bottoms_initialization();
-// UART
-void UART_initialization();
-// Circular buffer
-void initBuffer();
-void push(char receivedChar);
-void pull();
-
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
 int counterBlink = 0;
 
@@ -83,19 +53,125 @@ volatile parser_state ps;
 struct circular_buffer cb;                      // Our circular buffer
 volatile threshold_data sdata;
 
+// INITIALISATIONS FUNCTIONS //
+void bottoms_initialization(){
+    // Pin configuration for the buttons
+    RPINR0bits.INT1R = 0x58 ; // Set pin RP24 as INT1 (button E8)
+    //RPINR1bits.INT2R = 0x59 ; // Set pin RP25 as INT2 (button E9)
+    INTCON2bits.GIE = 1; // Enable global interrupt
+    INTCON2bits.INT1EP = 1; // Set INT1 interrupt on falling edge
+    //INTCON2bits.INT2EP = 1; // Set INT2 interrupt on falling edge
+    // Button E8 and E9 configuration
+    TRISEbits.TRISE8 = 1; // Set pin RE8 as input
+    //TRISEbits.TRISE9 = 1; // Set pin RE9 as input   
+    // Buttons Interrupt configuration
+    IFS1bits.INT1IF = 0; // Reset INT1 interrupt flag
+    //IFS1bits.INT2IF = 0; // Reset INT2 interrupt flag
+    // eneable INT1 and INT2 interrupts for E8 and E9 buttons
+    IEC1bits.INT1IE = 1; // Enable INT1 interrupt for button E8
+    //IEC1bits.INT2IE = 1; // Enable INT2 interrupt for button E9
+    // Configuration for timer interrupts for the button E8
+    tmr_setup_period(TIMER1, 100); // set the timer to press the button E8 for 100ms and then stop the motion
+    IEC0bits.T1IE = 1; // Enable Timer1 (T1IE) interrupt
+}
+
+void leds_initialization(){
+    // Configuration for the leds
+    TRISAbits.TRISA0 = 0; // Set pin RA0 as output
+    TRISGbits.TRISG9 = 0; // Set pin RG9 as output
+    TRISBbits.TRISB8 = 0; // Set pin RB8 as output -> left side lights
+    TRISFbits.TRISF1 = 0; // Set pin RF1 as output -> right side lights
+    TRISFbits.TRISF0 = 0; // Set pin RF0 as output -> breaks lights
+    TRISGbits.TRISG1 = 0; // Set pin RG1 as output -> low intensity lights
+    TRISAbits.TRISA7 = 0; // Set pin RA7 as output -> beam lights
+    // Set the lights off
+    lights_off(); 
+}
+
+void PWM_initialization(){
+    // Configuration for the PWM
+    PTCONbits.PTEN = 1; // Enable the PWM
+    // Set the input clock source for the OCx module
+    // Set the OCx module to operate timer output compare mode
+    OC1CON1bits.OCM = 6; // PWM mode on OC1; Fault pin disabled
+    OC2CON1bits.OCM = 6; 
+    OC3CON1bits.OCM = 6;
+    OC4CON1bits.OCM = 6;
+    // Set the OCx module synchronization source to the peripheral timer
+    OC1CON2bits.SYNCSEL = 0x1F; // Use the peripheral clock (maxVelocityValue) instead of the timer2 (default)
+    OC2CON2bits.SYNCSEL = 0x1F;
+    OC3CON2bits.SYNCSEL = 0x1F;
+    OC4CON2bits.SYNCSEL = 0x1F;
+    // Set pin for the CONTROL of the MOTORS
+    RPOR0bits.RP65R = 0x010; // Set pin RP65 as OC1 (PWM)
+    RPOR1bits.RP66R = 0x011; // Set pin RP66 as OC2 (PWM)
+    RPOR1bits.RP67R = 0x012; // Set pin RP67 as OC3 (PWM)
+    RPOR2bits.RP68R = 0x013; // Set pin RP68 as OC4 (PWM)
+    // Set the PWM frequency from 0 to 10kHz
+    OC1RS = 14400; 
+    OC2RS = 14400; 
+    OC3RS = 14400; 
+    OC4RS = 14400; 
+    stop_motion(); // Stop the motion
+}
+
+void ADC_initialization(){
+    // Configuration for ADC 
+    AD1CON1bits.ADON = 1; // Enable the ADC
+    AD1CON3bits.ADCS = 14; // Select how long is the TAD, 14*Tcy = 3.5us
+    // set auto sample time bits
+    AD1CON1bits.ASAM = 0; // Sampling begins when SAMP bit is set
+    AD1CON1bits.SSRC = 7; // Internal counter ends sampling and starts conversion (auto-convert)
+    AD1CON3bits.SAMC = 16; // Auto-sample time bits, how long the sampling time is (16*TAD = 3.6us)
+    // set channel scan bits
+    AD1CON2bits.CHPS = 0; // Converts CH0
+    AD1CON1bits.SIMSAM = 0; // Samples multiple channels individually in sequence
+    // IR sensor configuration AN14
+    TRISBbits.TRISB14 = 1; // Set pin RB14 as input
+    ANSELBbits.ANSB14 = 1; // Set pin RB14 as analog inputt
+    // Battery sensor configuration AN11
+    TRISBbits.TRISB11 = 1; // Set pin RB11 as input
+    ANSELBbits.ANSB11 = 1; // Set pin RB11 as analog input
+    // IR distance sensor enable line
+    TRISBbits.TRISB9 = 0; // Set pin RB9 as output
+    LATBbits.LATB9 = 1; // Set pin RB9 as HIGH
+    // Scan configuration
+    AD1CON2bits.CSCNA = 1; // Scan inputs
+    AD1CSSLbits.CSS14 = 1; // Enable AN14 for scan
+    AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan
+    AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
+}
+
+void UART_initialization(){
+    // Configuration for UART
+    U2MODE = 0; // Clear UART2 mode register
+    U2STA = 0; // Clear UART2 status register
+    U2BRG = 157; // 28800 baud rate
+
+    U2MODEbits.UARTEN = 1; // Enable UART2
+    U2STAbits.UTXEN = 1; // Enable UART2 transmission
+    U2STAbits.URXISEL = 3; // Interrup when the buffer is full
+    IEC1bits.U2RXIE = 1; // Enable UART2 interrupt
+    U2STAbits.UTXISEL0 = 0; // Interrupt when the buffer is empty
+    U2STAbits.UTXISEL1 = 0; // Interrupt when the buffer is empty
+
+    // UART2 TX and RX pins
+    RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
+    RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
+}
+
+void initBuffer(){
+    // Function to initialize the circular buffer
+    cb.bufferLength = 0;
+    cb.readIndex = 0;
+    cb.writeIndex = 0;
+}
+
+// TIMER FUNCTIONS //
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
-// this is too high to be put in a 16 bit register (max 65535)
-// we set the millisec value and the max value for that breadboard is more or less 0.582 (<582ms) seconds
-// If we set ms = 500 we have 144000000/2 * 500/1000 = 36000000 clock steps
-// this is too high to be put in a 16 bit register (max 65535)
-// If we set a prescaler of 1:8 we have 36000000/8 = 4500000 clock steps
-// this is too high to be put in a 16 bit register (max 65535)
-// If then we set a prescaler of 1:64 we have 36000000/64 = 562500 clock steps
-// this is too high to be put in a 16 bit register (max 65535)
-// If then we set a prescaler of 1:256 we have 36000000/256 = 140625 clock steps
-// this is ok to be put in a 16 bit register (max 65535)
-
+// this is too high to be put in a 16 bit register (max 65535) so we have to use a prescaler.
+// The max value of ms which doesn't overflow the register with the highest prescaler (256) is 65535*256/72000000 = 0.23s = 230ms
     double Fcy = FOSC / 2.0;
     double clock_steps = Fcy * (ms/1000.0);
     int count = 0;
@@ -188,6 +264,247 @@ void tmr_wait_ms(int timer, int ms){
     tmr_wait_period(timer);
 }
 
+// LIGHTS FUNCTIONS // COMMENTARE
+void lights_off(){
+    LATAbits.LATA0 = 0; 
+    LATGbits.LATG9 = 0; 
+    LATBbits.LATB8 = 0; 
+    LATFbits.LATF1 = 0; 
+    LATFbits.LATF0 = 0; 
+    LATGbits.LATG1 = 0; 
+    LATAbits.LATA7 = 0;
+}
+
+void lights_motion(float sg, float yr){
+    // Set the lights
+    if(sg >= 50.0){
+        LATFbits.LATF0 = 0; 
+        LATGbits.LATG1 = 0;
+        LATAbits.LATA7 = 1; // beam lights on
+    } else {
+        LATFbits.LATF0 = 1; // breaks lights on
+        LATGbits.LATG1 = 1; // low intensity lights on
+        LATAbits.LATA7 = 0; 
+    }
+
+    if (yr > 15.0){
+        // blink the left side lights at 1Hz
+        if (counterBlink == 0){
+            T3CONbits.TON = 1;
+        }
+    }
+    else {
+        // stop the timer3
+        T3CONbits.TON = 0;
+        TMR3 = 0.0;
+        counterBlink = 0;
+        // turn off the left and right side lights
+        LATBbits.LATB8 = 0; 
+        LATFbits.LATF1 = 0; 
+    }
+}
+
+// MOTION FUNCTIONS //
+
+void stop_motion(){
+    // Stop the motion
+    OC2R = 0;
+    OC4R = 0;
+    OC1R = 0;
+    OC3R = 0;
+}
+
+float threshold_calculation(int x_cm){
+    /*
+    * Function to calculate the threshold for the IR sensor:
+    * Based on our empirical measurements, we have found approximately the relation between the distance and the ADC value.
+    * These are the values that we have found:
+    * 0.6 = 38cm
+    * 0.5 = 32cm
+    * 0.4 = 26cm
+    * 0.3 = 20cm
+    * 0.2 = 15cm
+    * 0.14 = 10cm
+    * A function that in our opinion fits well these values is the following:
+    * y = 0.016*x - 0.025  ->  where 'y' is the ADC value and 'x' is the distance in cm
+    */
+    return (float) ((0.016 * x_cm) - 0.025);
+}
+
+void motor_pwm(float y){
+    /*
+    * Function to calculate the duty cycle for the motors based on the distance acquired from the ADC sensor
+    * and the threshold calculated from the empirical data. The duty cycle is calculated as a percentage of the
+    * maximum velocity (14400) and then it is applied to the PWM. The function returns the duty cycle for the motors.
+    * The function also sets the lights based on the distance acquired from the ADC sensor. 
+    * The maximum velocity is set to 60% of the maximum velocity (14400) because we want to have a margin of error.
+    * The maxVelocityValue is set to 14400 because we want to have a period of 10kHz for the PWM.
+    */
+    int maxVelocityValue = 14400;        // 10kHz
+    int maxVel = maxVelocityValue * 0.6; // 60% of the max velocity
+    int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
+    int left_pwm1, right_pwm1, left_pwm2, right_pwm2; // Duty cycle for the motors
+    float MIN = threshold_calculation(sdata.minth); // 15cm -> ~0.2
+    float MAX = threshold_calculation(sdata.maxth); // 38cm -> ~0.6
+    float sg, yr = 0.0; // Variables to set the lights based on the distance acquired from the ADC sensor
+    // Check if the distance is in the desired range
+    if (y < MIN){  // Pure right rotation
+        sg = 0;  
+        yr = 100;  
+        left_pwm1 = maxVel;
+        right_pwm1 = 0;
+        left_pwm2 = 0;
+        right_pwm2 = maxVel;
+        lights_motion(sg, yr); // Set the lights
+    }
+    else if (y > MAX){ // Move forward
+        sg = 100;
+        yr = 0;
+        left_pwm1 = maxVel;
+        right_pwm1 = maxVel;
+        left_pwm2 = 0;
+        right_pwm2 = 0;
+        lights_motion(sg, yr); // Set the lights
+    }
+    else if (y <= MAX && y >= MIN){ // Turn right
+        sg = (int) (100*(y-MIN)/(MAX-MIN)); 
+        yr = (int) (100*(MAX-y)/(MAX-MIN)); 
+        // Linear velocity decrease and dependant on the distance
+        left_pwm1 = (int) (sg*minVel/100);  
+        right_pwm1 = (int) (sg*minVel/100); 
+        left_pwm2 = 0;
+        right_pwm2 = 0;
+        // Create an angolar velocity to turn right
+        if (yr > 50){
+            // Set the linear velocity to 50% of the before calculated value
+            left_pwm1 = (int) (minVel*0.5);
+            right_pwm1 = (int) (minVel*0.5);
+            // Add the angolar velocity to turn right
+            left_pwm1 = (int) (left_pwm1 + (yr-50)*minVel/100);
+            right_pwm1 = (int) (right_pwm1 - (yr-50)*minVel/100);
+        }
+        lights_motion(sg, yr); // Set the lights
+    }
+    else{ // If there is an error stop the motion
+        stop_motion();
+        lights_off();
+        //return 0, 0, 0, 0;
+        return;
+    }
+    // Set the duty cycle for the motors
+    OC2R  = left_pwm1;
+    OC4R  = right_pwm1;
+    OC1R  = left_pwm2;
+    OC3R  = right_pwm2;
+    //return left_pwm2, left_pwm1, right_pwm2, right_pwm1;
+    return;
+}
+
+// ADC FUNCTIONS //
+
+float acquisition_ADC(){
+    /*
+    * Function to acquire the data from the ADC sensor and calculate the distance and the battery voltage
+    * The ADC is triggered to sample the data and when the conversion is done, the data are stored in the ADC1BUF0 and ADC1BUF1
+    */
+    do {
+        if (AD1CON1bits.SAMP == 0)
+            AD1CON1bits.SAMP = 1;                                   // Start sampling again
+    } while (!AD1CON1bits.DONE);                                    // Wait for the conversion to complete
+    float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
+    float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance
+    //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
+    return y;
+}
+
+// INTERRUPT FUNCTIONS //
+
+void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt(){
+    /*
+     * Interrupt function for button E8 (INT1): Resets the interrupt flag, 
+     * disables INT1 interrupt, enables Timer1 (T1IE) interrupt, resets T1IF flag,
+     * clears Timer1 register, and starts Timer1.
+     */ 
+    IFS1bits.INT1IF = 0;    // Reset INT1 interrupt flag 
+    IEC1bits.INT1IE = 0;    // Disable INT1 interrupt for button S5
+    IEC0bits.T1IE = 1;      // Enable Timer1 (T1IE) interrupt
+    IFS0bits.T1IF = 0;      // Reset Timer1 interrupt flag
+    TMR1 = 0;               // Clear Timer1 'counter' register
+    T1CONbits.TON = 1;      // Start Timer1
+}
+
+void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
+    /*
+     * Timer1 (T1) interrupt function: Resets the Timer1 interrupt flag,
+     * disables Timer1 interrupt (T1IE), enables INT1 interrupt for button E8,
+     * and checks if button E8 is pressed. If it is pressed, it stops the motion.
+     */ 
+    IFS0bits.T1IF = 0;      // Reset Timer1 interrupt flag 
+    IEC0bits.T1IE = 0;      // Disable Timer1 interrupt
+    IFS1bits.INT1IF = 0;    // Reset INT1 interrupt flag
+    IEC1bits.INT1IE = 1;    // Enable INT1 interrupt for button S5
+
+    // Check if button E8 is already pressed
+    if(PORTEbits.RE8 == 0){
+        if (mainState == STATE_WAIT){
+            mainState = STATE_MOTION;
+        }
+        else if (mainState == STATE_MOTION){
+            mainState = STATE_WAIT;
+        }
+        // stop the timer3
+        T3CONbits.TON = 0; 
+        TMR3 = 0.0;
+        counterBlink = 0;
+        // turn off the lights
+        lights_off();
+    }
+}
+
+void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt(){
+    /*
+    * Timer3 (T3) interrupt function: Resets the Timer3 interrupt flag,
+    * implements the variable 'counterBlink' because we cannot have a timer with a period of 1 second,
+    * so we wait two times the interrupt period (500ms) to have a period of 1 second. 
+    * After that, we blink the lights at 1Hz.
+    */
+    IFS0bits.T3IF = 0;      // Reset Timer3 interrupt flag
+    TMR3 = 0.0;
+    counterBlink += 1;
+    if (counterBlink == 5 && mainState == STATE_WAIT){
+        // blink the lights at 1Hz
+        LATGbits.LATG9 = !LATGbits.LATG9;
+        LATAbits.LATA0 = !LATAbits.LATA0;
+        LATBbits.LATB8 = !LATBbits.LATB8;
+        LATFbits.LATF1 = !LATFbits.LATF1;
+        counterBlink = 0;
+        return;
+    }
+    else if (counterBlink == 5 && mainState == STATE_MOTION){
+        // blink the right side lights at 1Hz
+        LATFbits.LATF1 = !LATFbits.LATF1;
+        counterBlink = 0;
+        return;
+    }
+    T3CONbits.TON = 1; // start the timer
+}
+
+void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
+    () {
+    /*
+     * Interrupt function of the UART2: when the buffer is full, execute it.
+     * Read the buffer and push the data inside the circular buffer
+     */ 
+    IFS1bits.U2RXIF = 0;                          // Reset the flag
+    if(U2STAbits.URXDA == 1){                     // If there are data to be read
+        IEC1bits.U2RXIE = 0;                      // Disable interrupt for UART2 reception
+        char receivedData = U2RXREG;              // Read
+        push(receivedData);                       // Push
+        IEC1bits.U2RXIE = 1;                       // Push
+    }    
+}
+
+// PROFESSOR'S CODE // COMMENTARE
 // We won't delve deeper in the explaination of the functions "parse_byte", "extract_integer",
 // "next_value" and "parse_pcth", because they have been given to us already made.
 int parse_byte(parser_state* ps, char byte) {
@@ -262,7 +579,6 @@ int next_value(const char* msg, int i) {
   return i;
 }
 
-
 void parse_pcth(const char* msg, volatile threshold_data* sdata){
   int i = 0;
   sdata->minth = extract_integer(msg);
@@ -270,342 +586,12 @@ void parse_pcth(const char* msg, volatile threshold_data* sdata){
   sdata->maxth = extract_integer(msg + i);
 }
 
-void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt(){
-    /*
-     * Interrupt function for button E8 (INT1): Resets the interrupt flag, 
-     * disables INT1 interrupt, enables Timer1 (T1IE) interrupt, resets T1IF flag,
-     * clears Timer1 register, and starts Timer1.
-     */ 
-    IFS1bits.INT1IF = 0;    // Reset INT1 interrupt flag 
-    IEC1bits.INT1IE = 0;    // Disable INT1 interrupt for button S5
-    IEC0bits.T1IE = 1;      // Enable Timer1 (T1IE) interrupt
-    IFS0bits.T1IF = 0;      // Reset Timer1 interrupt flag
-    TMR1 = 0;               // Clear Timer1 'counter' register
-    T1CONbits.TON = 1;      // Start Timer1
-}
-
-void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
-    /*
-     * Timer1 (T1) interrupt function: Resets the Timer1 interrupt flag,
-     * disables Timer1 interrupt (T1IE), enables INT1 interrupt for button E8,
-     * and checks if button E8 is pressed. If it is pressed, it stops the motion.
-     */ 
-    IFS0bits.T1IF = 0;      // Reset Timer1 interrupt flag 
-    IEC0bits.T1IE = 0;      // Disable Timer1 interrupt
-    IFS1bits.INT1IF = 0;    // Reset INT1 interrupt flag
-    IEC1bits.INT1IE = 1;    // Enable INT1 interrupt for button S5
-
-    // Check if button E8 is already pressed
-    if(PORTEbits.RE8 == 0){
-        if (mainState == STATE_WAIT){
-            mainState = STATE_MOTION;
-        }
-        else if (mainState == STATE_MOTION){
-            mainState = STATE_WAIT;
-        }
-        // stop the timer3
-        T3CONbits.TON = 0; 
-        TMR3 = 0.0;
-        counterBlink = 0;
-        // turn off the lights
-        lights_off();
-    }
-}
-
-void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt(){
-    /*
-    * Timer3 (T3) interrupt function: Resets the Timer3 interrupt flag,
-    * implements the variable 'counterBlink' because we cannot have a timer with a period of 1 second,
-    * so we wait two times the interrupt period (500ms) to have a period of 1 second. 
-    * After that, we blink the lights at 1Hz.
-    */
-    IFS0bits.T3IF = 0;      // Reset Timer3 interrupt flag
-    TMR3 = 0.0;
-    counterBlink += 1;
-    if (counterBlink == 5 && mainState == STATE_WAIT){
-        // blink the lights at 1Hz
-        LATGbits.LATG9 = !LATGbits.LATG9;
-        LATAbits.LATA0 = !LATAbits.LATA0;
-        LATBbits.LATB8 = !LATBbits.LATB8;
-        LATFbits.LATF1 = !LATFbits.LATF1;
-        counterBlink = 0;
-        return;
-    }
-    else if (counterBlink == 5 && mainState == STATE_MOTION){
-        // blink the right side lights at 1Hz
-        LATFbits.LATF1 = !LATFbits.LATF1;
-        counterBlink = 0;
-        return;
-    }
-    T3CONbits.TON = 1; // start the timer
-}
-
-void stop_motion(){
-    // Stop the motion
-    OC2R = 0;
-    OC4R = 0;
-    OC1R = 0;
-    OC3R = 0;
-}
-
-float acquisition_ADC(){
-    // ADC sampling
-    do {
-        if (AD1CON1bits.SAMP == 0)
-            AD1CON1bits.SAMP = 1; // trigger the sampling
-    } while (!AD1CON1bits.DONE);
-    // We calculate the current perceived distance and battery voltage
-    float V = (float) ADC1BUF1*(3.3 - 0)/1024;
-    float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4); 
-    //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024; // The times 3 is because of the resistor partitioning 
-    return y;
-    /*
-    * values of y for different distances
-    * 0.6 = 38cm
-    * 0.5 = 32cm
-    * 0.4 = 26cm
-    * 0.3 = 20cm
-    * 0.2 = 15cm
-    * 0.14 = 10cm
-    */
-}
-
-void motor_pwm(float y){
-    // Set the fin for a 10kHz PWM control
-    // at 144MHz clock we have a period of 144000000/10000 = 14400 clock steps
-
-    // QUA METTIAMO LA LOGICA. SE SIAMO NEI CASI ESTREMI (100% VELOCITÀ LINEARE O ANGOLARE) ALLORA FACCIO SOLO QUELLO
-    // SE SIAMO NEL CASO INTERMEDIO CALCOLO SEPARATAMENTE LA VELOCIÀ LINEARE DA APPLICARE, ALLA QUALE SOMMO (E SOTTRAGGO) LA COMPONENTE ANGOLARE
-    // ENTRAMBE QUESTE COMPONENTI SARANNO CALCOLATE COME LA PERCENTUALE DELLA VELOCITÀ MASSIMA (14400)
-
-    int maxVelocityValue = 14400; 
-    int maxVel = maxVelocityValue * 0.6; // 60% of the max velocity
-    int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
-    
-    int left_pwm1, right_pwm1, left_pwm2, right_pwm2;
-    float MIN = threshold_calculation(sdata.minth); // 15cm -> ~0.2
-    float MAX = threshold_calculation(sdata.maxth); // 38cm -> ~0.6
-    float sg, yr = 0.0;
-
-    if (y < MIN){ // rotate left
-        sg = 0;
-        yr = 100;
-
-        left_pwm1 = 0;
-        right_pwm1 = maxVel;
-        left_pwm2 = maxVel;
-        right_pwm2 = 0;
-        // Set the lights
-        lights_motion(sg, yr);
-    }
-    else if (y > MAX){ // move forward
-        sg = 100;
-        yr = 0;
-
-        left_pwm1 = maxVel;
-        right_pwm1 = maxVel;
-        left_pwm2 = 0;
-        right_pwm2 = 0;
-        // Set the lights
-        lights_motion(sg, yr);
-    }
-    else if (y <= MAX && y >= MIN){ // turn left
-        sg = (int) (100*(y-MIN)/(MAX-MIN)); 
-        yr = (int) (100*(MAX-y)/(MAX-MIN)); 
-
-        // componente lineare
-        left_pwm1 = (int) (sg*minVel/100);  //2888
-        right_pwm1 = (int) (sg*minVel/100); //2888
-        left_pwm2 = 0;
-        right_pwm2 = 0;
-
-        if (yr > 50){
-            left_pwm1 = (int) (minVel*0.5);
-            right_pwm1 = (int) (minVel*0.5);
-
-            left_pwm1 = (int) (left_pwm1 - (yr-50)*minVel/100);
-            right_pwm1 = (int) (right_pwm1 + (yr-50)*minVel/100);
-        }
-        // Set the lights
-        lights_motion(sg, yr);
-    }
-    else{ // if there is an error stop the motion
-        stop_motion();
-        lights_off();
-        return;
-    }
-    OC2R  = left_pwm1;
-    OC4R  = right_pwm1;
-    OC1R  = left_pwm2;
-    OC3R  = right_pwm2;
-
-    return;
-}
-
-// Function to calculate the threshold based on our empirical data..
-float threshold_calculation(float y_cm){
-    float threshold = (float) ((0.016 * y_cm) - 0.025);
-    return threshold;
-}
-
-void lights_motion(float sg, float yr){
-    // Set the lights
-    if(sg >= 50.0){
-        LATFbits.LATF0 = 0; 
-        LATGbits.LATG1 = 0;
-        LATAbits.LATA7 = 1; // beam lights on
-    } else {
-        LATFbits.LATF0 = 1; // breaks lights on
-        LATGbits.LATG1 = 1; // low intensity lights on
-        LATAbits.LATA7 = 0; 
-    }
-
-    if (yr > 15.0){
-        // blink the left side lights at 1Hz
-        if (counterBlink == 0){
-            T3CONbits.TON = 1;
-        }
-    }
-    else {
-        // stop the timer3
-        T3CONbits.TON = 0;
-        TMR3 = 0.0;
-        counterBlink = 0;
-        // turn off the left and right side lights
-        LATBbits.LATB8 = 0; 
-        LATFbits.LATF1 = 0; 
-    }
-}
-
-void lights_off(){
-    LATAbits.LATA0 = 0; 
-    LATGbits.LATG9 = 0; 
-    LATBbits.LATB8 = 0; 
-    LATFbits.LATF1 = 0; 
-    LATFbits.LATF0 = 0; 
-    LATGbits.LATG1 = 0; 
-    LATAbits.LATA7 = 0;
-}
-
-void bottoms_initialization(){
-    // Pin configuration for the buttons
-    RPINR0bits.INT1R = 0x58 ; // Set pin RP24 as INT1 (button E8)
-    //RPINR1bits.INT2R = 0x59 ; // Set pin RP25 as INT2 (button E9)
-    INTCON2bits.GIE = 1; // Enable global interrupt
-    INTCON2bits.INT1EP = 1; // Set INT1 interrupt on falling edge
-    //INTCON2bits.INT2EP = 1; // Set INT2 interrupt on falling edge
-    // Button E8 and E9 configuration
-    TRISEbits.TRISE8 = 1; // Set pin RE8 as input
-    //TRISEbits.TRISE9 = 1; // Set pin RE9 as input   
-    // Buttons Interrupt configuration
-    IFS1bits.INT1IF = 0; // Reset INT1 interrupt flag
-    //IFS1bits.INT2IF = 0; // Reset INT2 interrupt flag
-    // eneable INT1 and INT2 interrupts for E8 and E9 buttons
-    IEC1bits.INT1IE = 1; // Enable INT1 interrupt for button E8
-    //IEC1bits.INT2IE = 1; // Enable INT2 interrupt for button E9
-    // Configuration for timer interrupts for the button E8
-    tmr_setup_period(TIMER1, 100); // set the timer to press the button E8 for 100ms and then stop the motion
-    IEC0bits.T1IE = 1; // Enable Timer1 (T1IE) interrupt
-}
-
-void leds_initialization(){
-    // Configuration for the leds
-    TRISAbits.TRISA0 = 0; // Set pin RA0 as output
-    TRISGbits.TRISG9 = 0; // Set pin RG9 as output
-    TRISBbits.TRISB8 = 0; // Set pin RB8 as output -> left side lights
-    TRISFbits.TRISF1 = 0; // Set pin RF1 as output -> right side lights
-    TRISFbits.TRISF0 = 0; // Set pin RF0 as output -> breaks lights
-    TRISGbits.TRISG1 = 0; // Set pin RG1 as output -> low intensity lights
-    TRISAbits.TRISA7 = 0; // Set pin RA7 as output -> beam lights
-    // Set the lights off
-    lights_off(); 
-}
-
-void PWM_initialization(){
-    // Configuration for the PWM
-    PTCONbits.PTEN = 1; // Enable the PWM
-    // Set the input clock source for the OCx module
-    // Set the OCx module to operate timer output compare mode
-    OC1CON1bits.OCM = 6; // PWM mode on OC1; Fault pin disabled
-    OC2CON1bits.OCM = 6; 
-    OC3CON1bits.OCM = 6;
-    OC4CON1bits.OCM = 6;
-    // Set the OCx module synchronization source to the peripheral timer
-    OC1CON2bits.SYNCSEL = 0x1F; // Use the peripheral clock (maxVelocityValue) instead of the timer2 (default)
-    OC2CON2bits.SYNCSEL = 0x1F;
-    OC3CON2bits.SYNCSEL = 0x1F;
-    OC4CON2bits.SYNCSEL = 0x1F;
-    // Set pin for the CONTROL of the MOTORS
-    RPOR0bits.RP65R = 0x010; // Set pin RP65 as OC1 (PWM)
-    RPOR1bits.RP66R = 0x011; // Set pin RP66 as OC2 (PWM)
-    RPOR1bits.RP67R = 0x012; // Set pin RP67 as OC3 (PWM)
-    RPOR2bits.RP68R = 0x013; // Set pin RP68 as OC4 (PWM)
-    // Set the PWM frequency from 0 to 10kHz
-    OC1RS = 14400; 
-    OC2RS = 14400; 
-    OC3RS = 14400; 
-    OC4RS = 14400; 
-    stop_motion(); // Stop the motion
-}
-
-void ADC_initialization(){
-    // Configuration for ADC 
-    AD1CON1bits.ADON = 1; // Enable the ADC
-    AD1CON3bits.ADCS = 14; // Select how long is the TAD, timing for the ADC, as a function of Fcy (TAD = TCY*(ADCS+1) = 15*15 = 225ns)
-    // set auto sample time bits
-    AD1CON1bits.ASAM = 0; // Sampling begins when SAMP bit is set
-    AD1CON1bits.SSRC = 7; // Internal counter ends sampling and starts conversion (auto-convert)
-    AD1CON3bits.SAMC = 16; // Auto-sample time bits, how long the sampling time is (16*TAD = 3.6us)
-    // set channel scan bits
-    AD1CON2bits.CHPS = 0; // Converts CH0
-    AD1CON1bits.SIMSAM = 0; // Samples multiple channels individually in sequence
-    // IR sensor configuration AN14
-    TRISBbits.TRISB14 = 1; // Set pin RB14 as input
-    ANSELBbits.ANSB14 = 1; // Set pin RB14 as analog inputt
-    // Battery sensor configuration AN11
-    TRISBbits.TRISB11 = 1; // Set pin RB11 as input
-    ANSELBbits.ANSB11 = 1; // Set pin RB11 as analog input
-    // IR distance sensor enable line
-    TRISBbits.TRISB9 = 0; // Set pin RB9 as output
-    LATBbits.LATB9 = 1; // Set pin RB9 as HIGH
-    // Scan configuration
-    AD1CON2bits.CSCNA = 1; // Scan inputs
-    AD1CSSLbits.CSS14 = 1; // Enable AN14 for scan
-    AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan
-    AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
-}
-
-void UART_initialization(){
-    // Configuration for UART
-    U2MODE = 0; // Clear UART2 mode register
-    U2STA = 0; // Clear UART2 status register
-    U2BRG = 157; // 28800 baud rate
-
-    U2MODEbits.UARTEN = 1; // Enable UART2
-    U2STAbits.UTXEN = 1; // Enable UART2 transmission
-    U2STAbits.URXISEL = 3; // Interrup when the buffer is full
-    IEC1bits.U2RXIE = 1; // Enable UART2 interrupt
-    U2STAbits.UTXISEL0 = 0; // Interrupt when the buffer is empty
-    U2STAbits.UTXISEL1 = 0; // Interrupt when the buffer is empty
-
-    // UART2 TX and RX pins
-    RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
-    RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
-}
-
-void initBuffer(){
-    // Function to initialize the circular buffer
-    cb.bufferLength = 0;
-    cb.readIndex = 0;
-    cb.writeIndex = 0;
-}
-
+// CIRCULAR BUFFER FUNCTIONS //
 void push(char receivedChar) {
     /*
      * Pushes characters received from UART into the circular buffer for writing.
      * If the circular buffer overflows, characters will be lost.
      */
-
     if (cb.bufferLength == SIZE_OF_BUFFER) {
         // Buffer is full, cannot push more characters
         return;
@@ -657,23 +643,7 @@ void pull() {
     }
 }
 
-// INTERRUPT UART
-void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
-    () {
-    /*
-     * Interrupt function of the UART2: when the buffer is full, execute it.
-     * Read the buffer and push the data inside the circular buffer
-     */ 
-    IFS1bits.U2RXIF = 0;                          // Reset the flag
-    if(U2STAbits.URXDA == 1){                     // If there are data to be read
-        IEC1bits.U2RXIE = 0;                      // Disable interrupt for UART2 reception
-        char receivedData = U2RXREG;              // Read
-        push(receivedData);                       // Push
-        IEC1bits.U2RXIE = 1;                       // Push
-    }    
-}
-
-
+// MAIN FUNCTION //
 int main(void){
     ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
 
