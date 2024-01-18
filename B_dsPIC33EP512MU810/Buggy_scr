@@ -116,9 +116,6 @@ void PWM_initialization(){
 }
 
 void ADC_initialization(){
-    // Configuration for ADC 
-    AD1CON1bits.ADON = 1; // Enable the ADC
-    AD1CON3bits.ADCS = 14; // Select how long is the TAD, 14*Tcy = 3.5us
     // set auto sample time bits
     AD1CON1bits.ASAM = 0; // Sampling begins when SAMP bit is set
     AD1CON1bits.SSRC = 7; // Internal counter ends sampling and starts conversion (auto-convert)
@@ -140,6 +137,8 @@ void ADC_initialization(){
     AD1CSSLbits.CSS14 = 1; // Enable AN14 for scan
     AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan
     AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
+    AD1CON3bits.ADCS = 14; // Select how long is the TAD, 14*Tcy = 3.5us
+    AD1CON1bits.ADON = 1; // Enable the ADC
 }
 
 void buffers_initialization(){
@@ -599,7 +598,6 @@ void pull() {
      * which will print them. When the circular buffer is empty, and the UART is not sending characters,
      * 'convertNumberToString' writes the number of characters printed on the second row of the LCD.
      */
-
     while (cb.bufferLength > 0) {
         if (cb.bufferLength == 0) {
             // Buffer is empty
@@ -615,14 +613,14 @@ void pull() {
             if (cb.readIndex == SIZE_OF_BUFFER) {
                 cb.readIndex = 0;
             }
-            int msg_result = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
+            int message = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
             IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
-            
-            if (msg_result == NEW_MESSAGE) { // If we have a new message, we acquire the payload into threshold.minth and maxth
+
+            if (message == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
                 if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
-                    parse_pcth(ps.msg_payload, &threshold);
+                    parse_pcth(ps.msg_payload);
                 }
-            }
+            }            
         }
     }
 }
@@ -676,17 +674,15 @@ int main(void){
     buffers_initialization();  
     
     // UART2 initialization
-    U2MODE = 0; // Clear UART2 mode register
-    U2STA = 0; // Clear UART2 status register
-    U2BRG = 157; // 28800 baud rate
-
     U2MODEbits.UARTEN = 1; // Enable UART2
     U2STAbits.UTXEN = 1; // Enable UART2 transmission
     U2STAbits.URXISEL = 3; // Interrup when the buffer is full
     IEC1bits.U2RXIE = 1; // Enable UART2 interrupt
     U2STAbits.UTXISEL0 = 0; // Interrupt when the buffer is empty
     U2STAbits.UTXISEL1 = 0; // Interrupt when the buffer is empty
-
+    U2MODE = 0; // Clear UART2 mode register
+    U2STA = 0; // Clear UART2 status register
+    U2BRG = 157; // 28800 baud rate
     // UART2 TX and RX pins
     RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
     RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
