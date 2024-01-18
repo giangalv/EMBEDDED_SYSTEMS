@@ -45,14 +45,14 @@ typedef struct {
 int parse_byte(parser_state* ps, char byte);
 
 // Structure definition for the thresholds to be set and considered for PWM.
-typedef struct {
+struct threshold_data {
     int minth;
     int maxth;
-} threshold_data;
+};
 
 volatile parser_state ps;
 struct circular_buffer cb;                      // Our circular buffer
-volatile threshold_data sdata;
+struct threshold_data sdata;
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
@@ -296,11 +296,11 @@ int next_value(const char* msg, int i) {
   return i;
 }
 
-void parse_pcth(const char* msg, volatile threshold_data* sdata){
+void parse_pcth(const char* msg){
   int i = 0;
-  sdata->minth = extract_integer(msg);
+  sdata.minth = extract_integer(msg);
   i = next_value(msg, i);
-  sdata->maxth = extract_integer(msg + i);
+  sdata.maxth = extract_integer(msg + i);
 }
 
 ///////////////////////// INTERRUPT FUNCTIONS /////////////////////////
@@ -463,7 +463,7 @@ void pull() {
             
             if (message == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
                 if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
-                    parse_pcth(ps.msg_payload, &sdata);
+                    parse_pcth(ps.msg_payload);
                 }
             }
         }
