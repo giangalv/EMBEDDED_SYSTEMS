@@ -706,7 +706,7 @@ int main(void){
                 count = 0;
             }
         }
-        while(U2STAbits.UTXBF == 0 && tr_circular_buffer.bufferLength > 0){
+        while(U2STAbits.UTXBF == 0 && cb_transmission.bufferLength > 0){
             pull(false);
         }
 
