@@ -380,8 +380,8 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt(){
         // blink the lights at 1Hz
         LATGbits.LATG9 = !LATGbits.LATG9;
         LATAbits.LATA0 = !LATAbits.LATA0;
-        LATBbits.LATB8 = !LATBbits.LATB8;
-        LATFbits.LATF1 = !LATFbits.LATF1;
+        LATBbits.LATB8 = !LATBbits.LATB8; // LEFT
+        LATFbits.LATF1 = !LATFbits.LATF1; // RIGHT
         counterBlink = 0;
         return;
     }
@@ -399,37 +399,6 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T4Interrupt(){
     TMR4 = 0.0;
     hz10 = 1;
     T4CONbits.TON = 1;      // start the timer
-}
-
-
-
-void lights_motion(float sg, float yr){
-    // Set the lights
-    if(sg >= 50.0){
-        LATFbits.LATF0 = 0; 
-        LATGbits.LATG1 = 0;
-        LATAbits.LATA7 = 1; // beam lights on
-    } else {
-        LATFbits.LATF0 = 1; // breaks lights on
-        LATGbits.LATG1 = 1; // low intensity lights on
-        LATAbits.LATA7 = 0; 
-    }
-
-    if (yr > 15.0){
-        // blink the left side lights at 1Hz
-        if (counterBlink == 0){
-            T3CONbits.TON = 1;
-        }
-    }
-    else {
-        // stop the timer3
-        T3CONbits.TON = 0;
-        TMR3 = 0.0;
-        counterBlink = 0;
-        // turn off the left and right side lights
-        LATBbits.LATB8 = 0; 
-        LATFbits.LATF1 = 0; 
-    }
 }
 
 void lights_off(){
@@ -462,7 +431,7 @@ void push(char receivedChar, bool bufferSelection) {
             }
         }
     }
-    else if (bufferSelection == false){
+    else if (bufferSelection == false){ 
         if (cb_transmission.bufferLength == SIZE_OF_BUFFER_TR) {
             return;
         } 
@@ -474,6 +443,7 @@ void push(char receivedChar, bool bufferSelection) {
             if (cb_transmission.writeIndex == SIZE_OF_BUFFER_TR) {
                 cb_transmission.writeIndex = 0;
             }
+            //LATFbits.LATF0 = 1; // turn on the back
         }
     }
 
@@ -511,7 +481,7 @@ void pull(bool bufferSelection) {
             }
         }
     }
-    else if (bufferSelection == false){
+    else if (bufferSelection == false){ 
         if (cb_transmission.bufferLength <= 0) {
             return;
         } 
@@ -527,6 +497,7 @@ void pull(bool bufferSelection) {
             //IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
             // If the buffer is not full, send the data
             U2TXREG = receivedChar;
+            LATGbits.LATG1 = 1;  // low intensity
         }
     }
 }
@@ -559,17 +530,14 @@ void motor_pwm(float y){
     if (y < MIN){  // Pure right rotation
         LATAbits.LATA0 = 1; // Set pin RA1 as HIGH
         LATGbits.LATG9 = 0; // Set pin RG9 as LOW
-        LATFbits.LATF1 = 0; // Set pin RF2 as LOW
     }
     else if (y > MAX){ // Move forward
         LATAbits.LATA0 = 0; // Set pin RA1 as HIGH
         LATGbits.LATG9 = 1; // Set pin RG9 as LOW
-        LATFbits.LATF1 = 0; // Set pin RF2 as LOW
     }
     else if (y <= MAX && y >= MIN){ // Turn right
         LATAbits.LATA0 = 1; // Set pin RA1 as HIGH
         LATGbits.LATG9 = 1; // Set pin RG9 as LOW
-        LATFbits.LATF1 = 0; // Set pin RF2 as LOW
     }
     return;
 }
@@ -591,12 +559,13 @@ float acquisition_ADC(bool flag_mes){
         return y;
     }
     else if (flag_mes == false){
-        float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
+        float battery = 2.2;
+        //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
         return battery;
     }
 }
 
-void send_battery_voltage(float *v_battery){
+void send_battery_voltage(float * v_battery){
     // Function to send the battery voltage to the UART
     int size = 13;
     char message[size];
@@ -609,7 +578,7 @@ void send_battery_voltage(float *v_battery){
     }
 }
 
-void send_distance(int *cm_distance){
+void send_distance(int * cm_distance){
     // Function to send the distance to the UART
     int size = 11;
     char message[size];
@@ -621,7 +590,7 @@ void send_distance(int *cm_distance){
     }
 }
 
-void send_duty_cycle(int *dc1, int *dc2, int *dc3, int *dc4){
+void send_duty_cycle(int * dc1, int * dc2, int * dc3, int * dc4){
     // Function to send the duty cycle to the UART
     int size = 28;
     char message[size];
@@ -645,17 +614,18 @@ int main(void){
     
     // UART2 initialization
     // UART2 TX and RX pins
-    RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
-    RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
+
     U2MODE = 0; // Clear UART2 mode register
     U2STA = 0; // Clear UART2 status register
     U2BRG = 157; // 28800 baud rate
+    U2MODEbits.UARTEN = 1; // Enable UART2
     U2STAbits.UTXEN = 1; // Enable UART2 transmission
     U2STAbits.URXISEL = 3; // Interrup when the buffer is full
     IEC1bits.U2RXIE = 1; // Enable UART2 interrupt
     U2STAbits.UTXISEL0 = 0; // Interrupt when the buffer is empty
     U2STAbits.UTXISEL1 = 0; // Interrupt when the buffer is empty
-    U2MODEbits.UARTEN = 1; // Enable UART2
+    RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
+    RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
 
     // set the timer for the main at 1kHz
     tmr_setup_period(TIMER2, 1); // set the timer to 1ms
@@ -703,8 +673,7 @@ int main(void){
             count++;
             
             send_distance((int)&distance);
-            send_duty_cycle(&dc1, &dc2, &dc3, &dc4);
-            
+            send_duty_cycle(&dc1, &dc2, &dc3, &dc4);           
             hz10 = 0; // Re-set the flag
 
             if (count % 10 == 0){
