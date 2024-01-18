@@ -512,25 +512,21 @@ void pull(bool bufferSelection) {
         }
     }
     else if (bufferSelection == false){
-        while (cb_transmission.bufferLength > 0) {
-            if (cb_transmission.bufferLength == 0) {
-                return;
-            } 
-            else {
-                //IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
-                char receivedChar = cb_transmission.buffer[cb_transmission.readIndex];
-                cb_transmission.bufferLength--;
-                cb_transmission.readIndex++;
-                // Wrap around if the readIndex exceeds the buffer size
-                if (cb_transmission.readIndex == SIZE_OF_BUFFER_TR) {
-                    cb_transmission.readIndex = 0;
-                }
-                //IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
-                // If the buffer is not full, send the data
-                if (U2STAbits.UTXBF == 0){
-                    U2TXREG = receivedChar;
-                }
+        if (cb_transmission.bufferLength <= 0) {
+            return;
+        } 
+        else {
+            //IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
+            char receivedChar = cb_transmission.buffer[cb_transmission.readIndex];
+            cb_transmission.bufferLength--;
+            cb_transmission.readIndex++;
+            // Wrap around if the readIndex exceeds the buffer size
+            if (cb_transmission.readIndex == SIZE_OF_BUFFER_TR) {
+                cb_transmission.readIndex = 0;
             }
+            //IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
+            // If the buffer is not full, send the data
+            U2TXREG = receivedChar;
         }
     }
 }
@@ -710,7 +706,9 @@ int main(void){
                 count = 0;
             }
         }
-        pull(false);
+        while(U2STAbits.UTXBF == 0 && tr_circular_buffer.bufferLength > 0){
+            pull(false);
+        }
 
         IFS0bits.T2IF = 0;        
         T2CONbits.TON = 1;  
