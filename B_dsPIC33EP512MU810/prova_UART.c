@@ -22,28 +22,6 @@
 #define NO_MESSAGE (0) // no new messages
 
 
-// Function prototypes
-void tmr_setup_period(int timer, int ms);
-void tmr_wait_period(int timer);
-void tmr_wait_ms(int timer, int ms);
-// interrupt functions
-void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
-void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
-void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt();
-float threshold_calculation(float y_cm);
-// ligtts
-void leds_initialization();
-void lights_motion(float sg, float yr);
-void lights_off();
-// buttons
-void bottoms_initialization();
-// UART
-void UART_initialization();
-// Circular buffer
-void initBuffer();
-void push(char receivedChar);
-void pull();
-
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
 int counterBlink = 0;
 
@@ -244,24 +222,6 @@ void leds_initialization(){
     lights_off(); 
 }
 
-void UART_initialization(){
-    // Configuration for UART
-    U2MODE = 0; // Clear UART2 mode register
-    U2STA = 0; // Clear UART2 status register
-    U2BRG = 157; // 28800 baud rate
-
-    U2MODEbits.UARTEN = 1; // Enable UART2
-    U2STAbits.UTXEN = 1; // Enable UART2 transmission
-    U2STAbits.URXISEL = 3; // Interrup when the buffer is full
-    IEC1bits.U2RXIE = 1; // Enable UART2 interrupt
-    U2STAbits.UTXISEL0 = 0; // Interrupt when the buffer is empty
-    U2STAbits.UTXISEL1 = 0; // Interrupt when the buffer is empty
-
-    // UART2 TX and RX pins
-    RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
-    RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
-}
-
 // We won't delve deeper in the explaination of the functions "parse_byte", "extract_integer",
 // "next_value" and "parse_pcth", because they have been given to us already made.
 int parse_byte(parser_state* ps, char byte) {
@@ -460,7 +420,7 @@ void push(char receivedChar) {
      * Pushes characters received from UART into the circular buffer for writing.
      * If the circular buffer overflows, characters will be lost.
      */
-
+    LATAbits.LATA0 = 1; 
     if (cb.bufferLength == SIZE_OF_BUFFER) {
         // Buffer is full, cannot push more characters
         return;
@@ -484,7 +444,7 @@ void pull() {
      * which will print them. When the circular buffer is empty, and the UART is not sending characters,
      * 'convertNumberToString' writes the number of characters printed on the second row of the LCD.
      */
-
+    LATGbits.LATG9 = 1; 
     while (cb.bufferLength > 0) {
         if (cb.bufferLength == 0) {
             // Buffer is empty
@@ -533,24 +493,23 @@ float threshold_calculation(float y_cm){
     float threshold = (float) ((0.016 * y_cm) - 0.025);
     return threshold;
 }
-
 void motor_pwm(float y){
     float MIN = threshold_calculation(sdata.minth); // 15cm -> ~0.2
     float MAX = threshold_calculation(sdata.maxth); // 38cm -> ~0.6
     if (y < MIN){  // Pure right rotation
-        LATGbits.LATG9 = 0;
-        LATAbits.LATA0 = 1;
-        LATBbits.LATB8 = 0;
+        LATAbits.LATA1 = 1; // Set pin RA1 as HIGH
+        LATGbits.LATG9 = 0; // Set pin RG9 as LOW
+        LATFbits.LATF1 = 0; // Set pin RF2 as LOW
     }
     else if (y > MAX){ // Move forward
-        LATGbits.LATG9 = 1;
-        LATAbits.LATA0 = 0;
-        LATBbits.LATB8 = 0;
+        LATAbits.LATA1 = 0; // Set pin RA1 as HIGH
+        LATGbits.LATG9 = 1; // Set pin RG9 as LOW
+        LATFbits.LATF1 = 0; // Set pin RF2 as LOW
     }
     else if (y <= MAX && y >= MIN){ // Turn right
-        LATGbits.LATG9 = 0;
-        LATAbits.LATA0 = 0;
-        LATBbits.LATB8 = 1;
+        LATAbits.LATA1 = 0; // Set pin RA1 as HIGH
+        LATGbits.LATG9 = 0; // Set pin RG9 as LOW
+        LATFbits.LATF1 = 1; // Set pin RF2 as LOW
     }
     return;
 }
@@ -578,8 +537,24 @@ int main(void){
     // initializations
     leds_initialization();
     bottoms_initialization();   
-    UART_initialization();
     ADC_initialization();
+
+    
+    // UART2 initialization
+    U2MODE = 0; // Clear UART2 mode register
+    U2STA = 0; // Clear UART2 status register
+    U2BRG = 157; // 28800 baud rate
+
+    U2MODEbits.UARTEN = 1; // Enable UART2
+    U2STAbits.UTXEN = 1; // Enable UART2 transmission
+    U2STAbits.URXISEL = 3; // Interrup when the buffer is full
+    IEC1bits.U2RXIE = 1; // Enable UART2 interrupt
+    U2STAbits.UTXISEL0 = 0; // Interrupt when the buffer is empty
+    U2STAbits.UTXISEL1 = 0; // Interrupt when the buffer is empty
+
+    // UART2 TX and RX pins
+    RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
+    RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
 
     // set the timer for the main at 1kHz
     tmr_setup_period(TIMER2, 1); // set the timer to 1ms
