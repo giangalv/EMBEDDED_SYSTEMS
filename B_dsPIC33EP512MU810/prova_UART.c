@@ -24,7 +24,7 @@
 
 
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
-int counterBlink = 0;
+int counterBlink, hz10 = 0;
 
 // CIRCULAR BUFFER
 struct rc_circular_buffer {
@@ -394,6 +394,13 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt(){
     T3CONbits.TON = 1; // start the timer
 }
 
+void __attribute__ ((__interrupt__, __auto_psv__)) _T4Interrupt(){
+    IFS1bits.T4IF = 0;      // Reset Timer4 interrupt flag
+    TMR4 = 0.0;
+    hz10 = 1;
+    T4CONbits.TON = 1;      // start the timer
+}
+
 
 
 void lights_motion(float sg, float yr){
@@ -589,8 +596,8 @@ float acquisition_ADC(){
     } while (!AD1CON1bits.DONE);                                    // Wait for the conversion to complete
     float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
     float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance
-    //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
-    return y;
+    float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
+    return y, battery;
 }
 
 void send_battery_voltage(float *v_battery){
@@ -661,6 +668,8 @@ int main(void){
     // set the timer for the blink at 1Hz (200ms x 5 = 1s)
     tmr_setup_period(TIMER3, 200); // set the timer to 200ms
     IEC0bits.T3IE = 1; // Enable Timer3 (T3IE) interrupt
+    // set timer4 at 10 Hz
+    tmr_setup_period(TIMER4, 100); // set the timer to 100ms
 
     float distance = 0.0;
     
@@ -671,15 +680,18 @@ int main(void){
 
     // Battery voltage initialization:
     float battery = 0.0;
-    int count, hz10, dc1, dc2, dc3, dc4 = 0;
+    int count, dc1, dc2, dc3, dc4 = 0;
     
     // Threshold data initialization:
     sdata.minth = 15; 
     sdata.maxth = 38;
+
+    IFS1bits.T4IF = 0;        
+    T4CONbits.TON = 1;
     
     while (1)
     {
-        distance = acquisition_ADC();
+        distance, battery = acquisition_ADC();
         motor_pwm(distance);
 
         // Check if there are characters in UART2 buffer
@@ -702,6 +714,7 @@ int main(void){
 
             if (count % 10 == 0){
                 send_battery_voltage(&battery);
+                count = 0;
             }
         }
         pull(false);
