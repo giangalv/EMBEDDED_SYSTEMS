@@ -2,6 +2,7 @@
 #include "math.h"
 #include "stdio.h"
 #include "stdlib.h"
+#include "stdbool.h"
 
 #define FOSC 144000000.0 //Hz Clock breadboard
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
@@ -12,8 +13,8 @@
 #define TIMER5 5
 #define STATE_WAIT 0
 #define STATE_MOTION 1
-#define SIZE_OF_BUFFER 7
-#define SIZE_OF_MESSAGE_BUFFER 54
+#define SIZE_OF_BUFFER_RC 7
+#define SIZE_OF_BUFFER_TR 54
 
 #define STATE_DOLLAR  (1) // we discard everything until a dollar is found
 #define STATE_TYPE    (2) // we are reading the type of msg until a comma is found
@@ -26,10 +27,18 @@ int mainState = STATE_WAIT; // 0 = wait, 1 = move
 int counterBlink = 0;
 
 // CIRCULAR BUFFER
-struct circular_buffer {
+struct rc_circular_buffer {
     // Struct that contains only the usefull information that we need from the buffer
-    char buffer[SIZE_OF_BUFFER];                // Buffer
-    int bufferLength;                           // Different from the SIZE_OF_BUFFER, it's 'writeIndex - readIndex', the number of bytes that we still have to read
+    char buffer[SIZE_OF_BUFFER_RC];                // Buffer
+    int bufferLength;                           // Different from the SIZE_OF_BUFFER_RC, it's 'writeIndex - readIndex', the number of bytes that we still have to read
+    int readIndex;
+    int writeIndex;
+};
+
+struct tr_circular_buffer {
+    // Struct that contains only the usefull information that we need from the buffer
+    char buffer[SIZE_OF_BUFFER_TR];              // Buffer
+    int bufferLength;                           // Different from the SIZE_OF_BUFFER_TR, it's 'writeIndex - readIndex', the number of bytes that we still have to read
     int readIndex;
     int writeIndex;
 };
@@ -51,7 +60,8 @@ struct threshold_data {
 };
 
 volatile parser_state ps;
-struct circular_buffer cb;                      // Our circular buffer
+struct rc_circular_buffer cb_reception; 
+struct tr_circular_buffer cb_transmission;                     // Our circular buffers
 struct threshold_data threshold;
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
@@ -220,6 +230,16 @@ void leds_initialization(){
     TRISAbits.TRISA7 = 0; // Set pin RA7 as output -> beam lights
     // Set the lights off
     lights_off(); 
+}
+
+void buffers_initialization(){
+    // Function to initialize the circular buffer
+    cb_reception.bufferLength = 0;
+    cb_reception.readIndex = 0;
+    cb_reception.writeIndex = 0;
+    cb_transmission.bufferLength = 0;
+    cb_transmission.readIndex = 0;
+    cb_transmission.writeIndex = 0;
 }
 
 // We won't delve deeper in the explaination of the functions "parse_byte", "extract_integer",
@@ -415,62 +435,94 @@ void lights_off(){
     LATAbits.LATA7 = 0;
 }
 
-void push(char receivedChar) {
+void push(char receivedChar, bool bufferSelection) {
     /*
-     * Pushes characters received from UART into the circular buffer for writing.
-     * If the circular buffer overflows, characters will be lost.
+     * Pushes characters received from UART into the circular buffer.
+     * As we have two circular buffers, we have to select which one we want to use with the boolean 'bufferSelection'.
+     * If the buffer is full, we don't push other characters.
      */
-    if (cb.bufferLength == SIZE_OF_BUFFER) {
-        // Buffer is full, cannot push more characters
-        return;
-    } 
-    else {
-        // Push the character into the buffer
-        cb.buffer[cb.writeIndex] = receivedChar;
-        cb.bufferLength++;
-        cb.writeIndex++;
-
-        // Wrap around if the writeIndex exceeds the buffer size
-        if (cb.writeIndex == SIZE_OF_BUFFER) {
-            cb.writeIndex = 0;
-        }
-    }
-}
-
-void pull() {
-    /*
-     * Takes out all characters from the circular buffer and sends them to 'printFunctionFirstRow',
-     * which will print them. When the circular buffer is empty, and the UART is not sending characters,
-     * 'convertNumberToString' writes the number of characters printed on the second row of the LCD.
-     */
-    while (cb.bufferLength > 0) {
-        if (cb.bufferLength == 0) {
-            // Buffer is empty
+    if (bufferSelection == true){
+        if (cb_reception.bufferLength == SIZE_OF_BUFFER_RC) {
             return;
         } 
         else {
-            IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
-            char receivedChar = cb.buffer[cb.readIndex];
-            cb.bufferLength--;
-            cb.readIndex++;
-
-            // Wrap around if the readIndex exceeds the buffer size
-            if (cb.readIndex == SIZE_OF_BUFFER) {
-                cb.readIndex = 0;
+            cb_reception.buffer[cb_reception.writeIndex] = receivedChar;
+            cb_reception.bufferLength++;
+            cb_reception.writeIndex++;
+            // Wrap around if the writeIndex exceeds the buffer size
+            if (cb_reception.writeIndex == SIZE_OF_BUFFER_RC) {
+                cb_reception.writeIndex = 0;
             }
-            int msg_result = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
-            IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
-            
-            if (msg_result == NEW_MESSAGE) { // If we have a new message, we acquire the payload into threshold.minth and maxth
-                if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
-                    //parse_pcth(ps.msg_payload);
-                    LATFbits.LATF1 = 1; // Set pin RF2 as LOW
-                    int i = 0;
-                    threshold.minth = extract_integer(ps.msg_payload);
-                    i = next_value(ps.msg_payload, i);
-                    threshold.maxth = extract_integer(ps.msg_payload + i);
+        }
+    }
+    else if (bufferSelection == false){
+        if (cb_transmission.bufferLength == SIZE_OF_BUFFER_TR) {
+            return;
+        } 
+        else {
+            cb_transmission.buffer[cb_transmission.writeIndex] = receivedChar;
+            cb_transmission.bufferLength++;
+            cb_transmission.writeIndex++;
+            // Wrap around if the writeIndex exceeds the buffer size
+            if (cb_transmission.writeIndex == SIZE_OF_BUFFER_TR) {
+                cb_transmission.writeIndex = 0;
+            }
+        }
+    }
+
+}
+
+
+void pull(bool bufferSelection) {
+    /*
+     * Takes out all characters from the circular buffers:
+     * as we have two circular buffers, we have to select which one we want to use with the boolean 'bufferSelection'.
+     * With the 'cb_reception' buffer, we parse the message (with 'parse_byte') and we acquire the payload (with 'parse_pcth') into sdata.minth and maxth.
+     * With the 'cb_transmission' buffer, we send the data to the UART.
+     */
+    if (bufferSelection == true){
+        while (cb_reception.bufferLength > 0) {
+            if (cb_reception.bufferLength == 0) {
+                return;
+            } 
+            else {
+                IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
+                char receivedChar = cb_reception.buffer[cb_reception.readIndex];
+                cb_reception.bufferLength--;
+                cb_reception.readIndex++;
+                // Wrap around if the readIndex exceeds the buffer size
+                if (cb_reception.readIndex == SIZE_OF_BUFFER_RC) {
+                    cb_reception.readIndex = 0;
                 }
-                LATAbits.LATA7 = 1; // Set pin RA7 as HIGH
+                int msg_result = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
+                IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
+                if (msg_result == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
+                    if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
+                        parse_pcth(ps.msg_payload, threshold);
+                    }
+                }
+            }
+        }
+    }
+    else if (bufferSelection == false){
+        while (cb_transmission.bufferLength > 0) {
+            if (cb_transmission.bufferLength == 0) {
+                return;
+            } 
+            else {
+                //IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
+                char receivedChar = cb_transmission.buffer[cb_transmission.readIndex];
+                cb_transmission.bufferLength--;
+                cb_transmission.readIndex++;
+                // Wrap around if the readIndex exceeds the buffer size
+                if (cb_transmission.readIndex == SIZE_OF_BUFFER_TR) {
+                    cb_transmission.readIndex = 0;
+                }
+                //IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
+                // If the buffer is not full, send the data
+                if (U2STAbits.UTXBF == 0){
+                    U2TXREG = receivedChar;
+                }
             }
         }
     }
@@ -487,7 +539,7 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
     if(U2STAbits.URXDA == 1){                     // If there are data to be read
         //IEC1bits.U2RXIE = 0;                      // Disable interrupt for UART2 reception
         char receivedData = U2RXREG;              // Read
-        push(receivedData);                       // Push
+        push(receivedData, true);                       // Push
         //IEC1bits.U2RXIE = 1;                       // Push
     }    
 }
@@ -497,6 +549,7 @@ float threshold_calculation(float y_cm){
     float threshold = (float) ((0.016 * y_cm) - 0.025);
     return threshold;
 }
+
 void motor_pwm(float y){
     float MIN = threshold_calculation(threshold.minth); // 15cm -> ~0.2
     float MAX = threshold_calculation(threshold.maxth); // 38cm -> ~0.6
@@ -542,6 +595,7 @@ int main(void){
     leds_initialization();
     bottoms_initialization();   
     ADC_initialization();
+    buffers_initialization();
 
     
     // UART2 initialization
@@ -567,11 +621,6 @@ int main(void){
     IEC0bits.T3IE = 1; // Enable Timer3 (T3IE) interrupt
 
     float distance = 0.0;
-
-    // Circular buffer initialization:
-    cb.writeIndex = 0;
-    cb.readIndex = 0;
-    cb.bufferLength = 0;
     
     // Parser state initialization:
     ps.state = STATE_DOLLAR; 
@@ -591,10 +640,10 @@ int main(void){
         if (U2STAbits.URXDA == 1) {   
             IEC1bits.U2RXIE = 0;         // Disable interrupt for UART2 reception
             char receivedData = U2RXREG; // Read from UART2
-            push(receivedData);   
+            push(receivedData, true);   
             IEC1bits.U2RXIE = 1;         // Enable UART2 reception interrupt
         }
-        pull();
+        pull(true);
 
         IFS0bits.T2IF = 0;        
         T2CONbits.TON = 1;  
