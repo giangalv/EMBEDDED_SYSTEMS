@@ -420,7 +420,6 @@ void push(char receivedChar) {
      * Pushes characters received from UART into the circular buffer for writing.
      * If the circular buffer overflows, characters will be lost.
      */
-    LATAbits.LATA0 = 1; 
     if (cb.bufferLength == SIZE_OF_BUFFER) {
         // Buffer is full, cannot push more characters
         return;
@@ -444,7 +443,6 @@ void pull() {
      * which will print them. When the circular buffer is empty, and the UART is not sending characters,
      * 'convertNumberToString' writes the number of characters printed on the second row of the LCD.
      */
-    LATGbits.LATG9 = 1; 
     while (cb.bufferLength > 0) {
         if (cb.bufferLength == 0) {
             // Buffer is empty
@@ -497,17 +495,17 @@ void motor_pwm(float y){
     float MIN = threshold_calculation(sdata.minth); // 15cm -> ~0.2
     float MAX = threshold_calculation(sdata.maxth); // 38cm -> ~0.6
     if (y < MIN){  // Pure right rotation
-        LATAbits.LATA1 = 1; // Set pin RA1 as HIGH
+        LATAbits.LATA0 = 1; // Set pin RA1 as HIGH
         LATGbits.LATG9 = 0; // Set pin RG9 as LOW
         LATFbits.LATF1 = 0; // Set pin RF2 as LOW
     }
     else if (y > MAX){ // Move forward
-        LATAbits.LATA1 = 0; // Set pin RA1 as HIGH
+        LATAbits.LATA0 = 0; // Set pin RA1 as HIGH
         LATGbits.LATG9 = 1; // Set pin RG9 as LOW
         LATFbits.LATF1 = 0; // Set pin RF2 as LOW
     }
     else if (y <= MAX && y >= MIN){ // Turn right
-        LATAbits.LATA1 = 0; // Set pin RA1 as HIGH
+        LATAbits.LATA0 = 0; // Set pin RA1 as HIGH
         LATGbits.LATG9 = 0; // Set pin RG9 as LOW
         LATFbits.LATF1 = 1; // Set pin RF2 as LOW
     }
