@@ -593,6 +593,43 @@ float acquisition_ADC(){
     return y;
 }
 
+void send_battery_voltage(float *v_battery){
+    // Function to send the battery voltage to the UART
+    int size = 13;
+    char message[size];
+    sprintf(message, "$MBATT,%.2f*", *v_battery);
+    char ch = ' ';
+
+    for (int i = 0; i < size && message[i] != '\0'; i++){ 
+        ch = message[i];
+        push(ch, false);
+    }
+}
+
+void send_distance(int *cm_distance){
+    // Function to send the distance to the UART
+    int size = 11;
+    char message[size];
+    sprintf(message, "$MDIST,%d*", *cm_distance);
+    char ch = ' ';
+    for (int i = 0; i < size && message[i] != '\0'; i++){ 
+        ch = message[i];
+        push(ch, false);
+    }
+}
+
+void send_duty_cycle(int *dc1, int *dc2, int *dc3, int *dc4){
+    // Function to send the duty cycle to the UART
+    int size = 28;
+    char message[size];
+    sprintf(message, "$MDUTY,%d,%d,%d,%d*", *dc1, *dc2, *dc3, *dc4);
+    char ch = ' ';
+    for (int i = 0; i < size && message[i] != '\0'; i++){ 
+        ch = message[i];
+        push(ch, false);
+    }
+}
+
 int main(void){
     ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
 
@@ -631,6 +668,10 @@ int main(void){
     ps.state = STATE_DOLLAR; 
     ps.index_type = 0; 
     ps.index_payload = 0;
+
+    // Battery voltage initialization:
+    float battery = 0.0;
+    int count, hz10, dc1, dc2, dc3, dc4 = 0;
     
     // Threshold data initialization:
     sdata.minth = 15; 
@@ -649,6 +690,21 @@ int main(void){
             IEC1bits.U2RXIE = 1;         // Enable UART2 reception interrupt
         }
         pull(true);
+
+        // trasmission of the data
+        if(hz10 == 1){ //10Hz - 100ms Tasks
+            count++;
+            
+            send_distance((int)&distance);
+            send_duty_cycle(&dc1, &dc2, &dc3, &dc4);
+            
+            hz10 = 0; // Re-set the flag
+
+            if (count % 10 == 0){
+                send_battery_voltage(&battery);
+            }
+        }
+        pull(false);
 
         IFS0bits.T2IF = 0;        
         T2CONbits.TON = 1;  
