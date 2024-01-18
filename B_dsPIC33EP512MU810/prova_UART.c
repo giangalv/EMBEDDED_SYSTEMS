@@ -470,6 +470,7 @@ void pull() {
                     i = next_value(ps.msg_payload, i);
                     sdata.maxth = extract_integer(ps.msg_payload + i);
                 }
+                LATAbits.LATA7 = 1; // Set pin RA7 as HIGH
             }
         }
     }
