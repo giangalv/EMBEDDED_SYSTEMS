@@ -463,7 +463,11 @@ void pull() {
             
             if (message == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
                 if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
-                    parse_pcth(ps.msg_payload);
+                    //parse_pcth(ps.msg_payload);
+                    int i = 0;
+                    sdata.minth = extract_integer(ps.msg_payload);
+                    i = next_value(ps.msg_payload, i);
+                    sdata.maxth = extract_integer(ps.msg_payload + i);
                 }
             }
         }
