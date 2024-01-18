@@ -251,7 +251,7 @@ int parse_byte(parser_state* ps, char byte) {
                 ps->state = STATE_TYPE;
                 ps->index_type = 0;
             }
-            break;
+            break; 
         case STATE_TYPE:
             if (byte == ',') {
                 ps->state = STATE_PAYLOAD;
@@ -281,7 +281,7 @@ int parse_byte(parser_state* ps, char byte) {
             } else {
                 ps->msg_payload[ps->index_payload] = byte; // ok!
                 ps->index_payload++; // increment for the next time;
-            }
+            } 
             break;
     }
     return NO_MESSAGE;
@@ -318,9 +318,9 @@ int next_value(const char* msg, int i) {
 
 void parse_pcth(const char* msg){
   int i = 0;
-  threshold.minth = extract_integer(msg);
+  sdata.minth = extract_integer(msg);
   i = next_value(msg, i);
-  threshold.maxth = extract_integer(msg + i);
+  sdata.maxth = extract_integer(msg + i);
 }
 
 ///////////////////////// INTERRUPT FUNCTIONS /////////////////////////
@@ -524,6 +524,11 @@ void pull(bool bufferSelection) {
                     U2TXREG = receivedChar;
                 }
             }
+            else if (message == NO_MESSAGE)
+            {
+                LATFbits.LATF0 = 1; 
+            }
+            
         }
     }
 }
@@ -551,8 +556,8 @@ float threshold_calculation(float y_cm){
 }
 
 void motor_pwm(float y){
-    float MIN = threshold_calculation(threshold.minth); // 15cm -> ~0.2
-    float MAX = threshold_calculation(threshold.maxth); // 38cm -> ~0.6
+    float MIN = threshold_calculation(sdata.minth); // 15cm -> ~0.2
+    float MAX = threshold_calculation(sdata.maxth); // 38cm -> ~0.6
     if (y < MIN){  // Pure right rotation
         LATAbits.LATA0 = 1; // Set pin RA1 as HIGH
         LATGbits.LATG9 = 0; // Set pin RG9 as LOW
@@ -628,8 +633,8 @@ int main(void){
     ps.index_payload = 0;
     
     // Threshold data initialization:
-    threshold.minth = 15; 
-    threshold.maxth = 38;
+    sdata.minth = 15; 
+    sdata.maxth = 38;
     
     while (1)
     {
