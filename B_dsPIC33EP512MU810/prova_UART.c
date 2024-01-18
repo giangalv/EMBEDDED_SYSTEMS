@@ -318,9 +318,9 @@ int next_value(const char* msg, int i) {
 
 void parse_pcth(const char* msg){
   int i = 0;
-  sdata.minth = extract_integer(msg);
+  threshold.minth = extract_integer(msg);
   i = next_value(msg, i);
-  sdata.maxth = extract_integer(msg + i);
+  threshold.maxth = extract_integer(msg + i);
 }
 
 ///////////////////////// INTERRUPT FUNCTIONS /////////////////////////
@@ -505,7 +505,7 @@ void pull(bool bufferSelection) {
                 IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
                 if (msg_result == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
                     if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
-                        parse_pcth(ps.msg_payload, threshold);
+                        parse_pcth(ps.msg_payload);
                     }
                 }
             }
@@ -558,8 +558,8 @@ float threshold_calculation(float y_cm){
 }
 
 void motor_pwm(float y){
-    float MIN = threshold_calculation(sdata.minth); // 15cm -> ~0.2
-    float MAX = threshold_calculation(sdata.maxth); // 38cm -> ~0.6
+    float MIN = threshold_calculation(threshold.minth); // 15cm -> ~0.2
+    float MAX = threshold_calculation(threshold.maxth); // 38cm -> ~0.6
     if (y < MIN){  // Pure right rotation
         LATAbits.LATA0 = 1; // Set pin RA1 as HIGH
         LATGbits.LATG9 = 0; // Set pin RG9 as LOW
@@ -643,20 +643,18 @@ int main(void){
 
     
     // UART2 initialization
+    // UART2 TX and RX pins
+    RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
+    RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
     U2MODE = 0; // Clear UART2 mode register
     U2STA = 0; // Clear UART2 status register
     U2BRG = 157; // 28800 baud rate
-
-    U2MODEbits.UARTEN = 1; // Enable UART2
     U2STAbits.UTXEN = 1; // Enable UART2 transmission
     U2STAbits.URXISEL = 3; // Interrup when the buffer is full
     IEC1bits.U2RXIE = 1; // Enable UART2 interrupt
     U2STAbits.UTXISEL0 = 0; // Interrupt when the buffer is empty
     U2STAbits.UTXISEL1 = 0; // Interrupt when the buffer is empty
-
-    // UART2 TX and RX pins
-    RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
-    RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
+    U2MODEbits.UARTEN = 1; // Enable UART2
 
     // set the timer for the main at 1kHz
     tmr_setup_period(TIMER2, 1); // set the timer to 1ms
@@ -678,8 +676,8 @@ int main(void){
     int count, dc1, dc2, dc3, dc4 = 0;
     
     // Threshold data initialization:
-    sdata.minth = 15; 
-    sdata.maxth = 38;
+    threshold.minth = 15; 
+    threshold.maxth = 38;
 
     IFS1bits.T4IF = 0;        
     T4CONbits.TON = 1;
