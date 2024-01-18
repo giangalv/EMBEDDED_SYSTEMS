@@ -182,6 +182,34 @@ void tmr_wait_ms(int timer, int ms){
 }
 
 //////////////////////// INITIALIZATION FUNCTIONS ////////////////////////
+void ADC_initialization(){
+    // Configuration for ADC 
+    AD1CON1bits.ADON = 1; // Enable the ADC
+    AD1CON3bits.ADCS = 14; // Select how long is the TAD, 14*Tcy = 3.5us
+    // set auto sample time bits
+    AD1CON1bits.ASAM = 0; // Sampling begins when SAMP bit is set
+    AD1CON1bits.SSRC = 7; // Internal counter ends sampling and starts conversion (auto-convert)
+    AD1CON3bits.SAMC = 16; // Auto-sample time bits, how long the sampling time is (16*TAD = 3.6us)
+    // set channel scan bits
+    AD1CON2bits.CHPS = 0; // Converts CH0
+    AD1CON1bits.SIMSAM = 0; // Samples multiple channels individually in sequence
+    // IR sensor configuration AN14
+    TRISBbits.TRISB14 = 1; // Set pin RB14 as input
+    ANSELBbits.ANSB14 = 1; // Set pin RB14 as analog inputt
+    // Battery sensor configuration AN11
+    TRISBbits.TRISB11 = 1; // Set pin RB11 as input
+    ANSELBbits.ANSB11 = 1; // Set pin RB11 as analog input
+    // IR distance sensor enable line
+    TRISBbits.TRISB9 = 0; // Set pin RB9 as output
+    LATBbits.LATB9 = 1; // Set pin RB9 as HIGH
+    // Scan configuration
+    AD1CON2bits.CSCNA = 1; // Scan inputs
+    AD1CSSLbits.CSS14 = 1; // Enable AN14 for scan
+    AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan
+    AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
+}
+
+
 void bottoms_initialization(){
     // Pin configuration for the buttons
     RPINR0bits.INT1R = 0x58 ; // Set pin RP24 as INT1 (button E8)
@@ -506,6 +534,44 @@ float threshold_calculation(float y_cm){
     return threshold;
 }
 
+void motor_pwm(float y){
+    float MIN = threshold_calculation(sdata.minth); // 15cm -> ~0.2
+    float MAX = threshold_calculation(sdata.maxth); // 38cm -> ~0.6
+    if (y < MIN){  // Pure right rotation
+        LATGbits.LATG9 = 0;
+        LATAbits.LATA0 = 1;
+        LATBbits.LATB8 = 0;
+    }
+    else if (y > MAX){ // Move forward
+        LATGbits.LATG9 = 1;
+        LATAbits.LATA0 = 0;
+        LATBbits.LATB8 = 0;
+    }
+    else if (y <= MAX && y >= MIN){ // Turn right
+        LATGbits.LATG9 = 0;
+        LATAbits.LATA0 = 0;
+        LATBbits.LATB8 = 1;
+    }
+    return;
+}
+
+// ADC FUNCTIONS //
+
+float acquisition_ADC(){
+    /*
+    * Function to acquire the data from the ADC sensor and calculate the distance and the battery voltage
+    * The ADC is triggered to sample the data and when the conversion is done, the data are stored in the ADC1BUF0 and ADC1BUF1
+    */
+    do {
+        if (AD1CON1bits.SAMP == 0)
+            AD1CON1bits.SAMP = 1;                                   // Start sampling again
+    } while (!AD1CON1bits.DONE);                                    // Wait for the conversion to complete
+    float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
+    float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance
+    //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
+    return y;
+}
+
 int main(void){
     ANSELA=ANSELB=ANSELC=ANSELD=ANSELE=ANSELG=0x0000; //MANDATORY 
 
@@ -513,6 +579,7 @@ int main(void){
     leds_initialization();
     bottoms_initialization();   
     UART_initialization();
+    ADC_initialization();
 
     // set the timer for the main at 1kHz
     tmr_setup_period(TIMER2, 1); // set the timer to 1ms
@@ -538,6 +605,9 @@ int main(void){
     
     while (1)
     {
+        distance = acquisition_ADC();
+        motor_pwm(distance);
+
         // Check if there are characters in UART2 buffer
         if (U2STAbits.URXDA == 1) {   
             IEC1bits.U2RXIE = 0;         // Disable interrupt for UART2 reception
