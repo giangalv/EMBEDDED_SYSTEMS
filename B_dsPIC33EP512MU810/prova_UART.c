@@ -464,6 +464,7 @@ void pull() {
             if (message == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
                 if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
                     //parse_pcth(ps.msg_payload);
+                    LATFbits.LATF1 = 1; // Set pin RF2 as LOW
                     int i = 0;
                     sdata.minth = extract_integer(ps.msg_payload);
                     i = next_value(ps.msg_payload, i);
@@ -509,9 +510,9 @@ void motor_pwm(float y){
         LATFbits.LATF1 = 0; // Set pin RF2 as LOW
     }
     else if (y <= MAX && y >= MIN){ // Turn right
-        LATAbits.LATA0 = 0; // Set pin RA1 as HIGH
-        LATGbits.LATG9 = 0; // Set pin RG9 as LOW
-        LATFbits.LATF1 = 1; // Set pin RF2 as LOW
+        LATAbits.LATA0 = 1; // Set pin RA1 as HIGH
+        LATGbits.LATG9 = 1; // Set pin RG9 as LOW
+        LATFbits.LATF1 = 0; // Set pin RF2 as LOW
     }
     return;
 }
