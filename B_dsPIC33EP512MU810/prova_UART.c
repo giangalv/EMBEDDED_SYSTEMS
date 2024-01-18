@@ -52,7 +52,7 @@ struct threshold_data {
 
 volatile parser_state ps;
 struct circular_buffer cb;                      // Our circular buffer
-struct threshold_data threshold;
+struct threshold_data sdata;
 
 void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
 // Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
@@ -231,7 +231,7 @@ int parse_byte(parser_state* ps, char byte) {
                 ps->state = STATE_TYPE;
                 ps->index_type = 0;
             }
-            break;
+            break; 
         case STATE_TYPE:
             if (byte == ',') {
                 ps->state = STATE_PAYLOAD;
@@ -261,7 +261,7 @@ int parse_byte(parser_state* ps, char byte) {
             } else {
                 ps->msg_payload[ps->index_payload] = byte; // ok!
                 ps->index_payload++; // increment for the next time;
-            }
+            } 
             break;
     }
     return NO_MESSAGE;
@@ -298,9 +298,9 @@ int next_value(const char* msg, int i) {
 
 void parse_pcth(const char* msg){
   int i = 0;
-  threshold.minth = extract_integer(msg);
+  sdata.minth = extract_integer(msg);
   i = next_value(msg, i);
-  threshold.maxth = extract_integer(msg + i);
+  sdata.maxth = extract_integer(msg + i);
 }
 
 ///////////////////////// INTERRUPT FUNCTIONS /////////////////////////
@@ -458,20 +458,25 @@ void pull() {
             if (cb.readIndex == SIZE_OF_BUFFER) {
                 cb.readIndex = 0;
             }
-            int msg_result = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
+            int message = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
             IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
-            
-            if (msg_result == NEW_MESSAGE) { // If we have a new message, we acquire the payload into threshold.minth and maxth
+
+            if (message == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
+                LATAbits.LATA7 = 1; // Set pin RA7 as HIGH
                 if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
                     //parse_pcth(ps.msg_payload);
                     LATFbits.LATF1 = 1; // Set pin RF2 as LOW
                     int i = 0;
-                    threshold.minth = extract_integer(ps.msg_payload);
+                    sdata.minth = extract_integer(ps.msg_payload);
                     i = next_value(ps.msg_payload, i);
-                    threshold.maxth = extract_integer(ps.msg_payload + i);
+                    sdata.maxth = extract_integer(ps.msg_payload + i);
                 }
-                LATAbits.LATA7 = 1; // Set pin RA7 as HIGH
             }
+            else if (message == NO_MESSAGE)
+            {
+                LATFbits.LATF0 = 1; 
+            }
+            
         }
     }
 }
@@ -498,8 +503,8 @@ float threshold_calculation(float y_cm){
     return threshold;
 }
 void motor_pwm(float y){
-    float MIN = threshold_calculation(threshold.minth); // 15cm -> ~0.2
-    float MAX = threshold_calculation(threshold.maxth); // 38cm -> ~0.6
+    float MIN = threshold_calculation(sdata.minth); // 15cm -> ~0.2
+    float MAX = threshold_calculation(sdata.maxth); // 38cm -> ~0.6
     if (y < MIN){  // Pure right rotation
         LATAbits.LATA0 = 1; // Set pin RA1 as HIGH
         LATGbits.LATG9 = 0; // Set pin RG9 as LOW
@@ -579,8 +584,8 @@ int main(void){
     ps.index_payload = 0;
     
     // Threshold data initialization:
-    threshold.minth = 15; 
-    threshold.maxth = 38;
+    sdata.minth = 15; 
+    sdata.maxth = 38;
     
     while (1)
     {
