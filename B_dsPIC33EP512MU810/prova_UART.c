@@ -531,11 +531,6 @@ void pull(bool bufferSelection) {
                     U2TXREG = receivedChar;
                 }
             }
-            else if (message == NO_MESSAGE)
-            {
-                LATFbits.LATF0 = 1; 
-            }
-            
         }
     }
 }
