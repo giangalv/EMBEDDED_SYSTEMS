@@ -326,6 +326,14 @@ float threshold_calculation(int x_cm){
     return (float) ((0.016 * x_cm) - 0.025);
 }
 
+int inverse_threshold_calculation(float threshold){
+    /*
+    * Inverse of the function 'threshold_calculation' to calculate the 'real' distance from the ADC value
+    */
+    int x_cm = (int) ((threshold + 0.025)/0.016);
+    return x_cm;
+}
+
 void motor_pwm(float y){
     /*
     * Function to calculate the duty cycle for the motors based on the distance acquired from the ADC sensor
@@ -627,7 +635,6 @@ void push(char receivedChar, bool bufferSelection) {
 
 }
 
-
 void pull(bool bufferSelection) {
     /*
      * Takes out all characters from the circular buffers:
@@ -691,11 +698,6 @@ void send_battery_voltage(){
         ch = message[i];
         push(ch, false);
     }
-}
-
-int inverse_threshold_calculation(float threshold){
-    int y_cm = (int) ((threshold + 0.025)/0.016);
-    return y_cm;
 }
 
 void send_distance(int* cm_distance){
