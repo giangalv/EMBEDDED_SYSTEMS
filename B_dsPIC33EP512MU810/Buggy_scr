@@ -330,8 +330,7 @@ int inverse_threshold_calculation(float threshold){
     /*
     * Inverse of the function 'threshold_calculation' to calculate the 'real' distance from the ADC value
     */
-    int x_cm = (int) ((threshold + 0.025)/0.016);
-    return x_cm;
+    return (int) ((threshold + 0.025)/0.016);
 }
 
 void motor_pwm(float y){
