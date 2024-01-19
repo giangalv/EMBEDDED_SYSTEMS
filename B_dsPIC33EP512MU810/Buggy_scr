@@ -608,16 +608,20 @@ void push(char receivedChar, bool bufferSelection) {
     }
     else if (bufferSelection == false){ 
         if (cb_transmission.bufferLength == SIZE_OF_BUFFER_TR) {
-            return;
-        } 
-        else {
-            cb_transmission.buffer[cb_transmission.writeIndex] = receivedChar;
-            cb_transmission.bufferLength++;
-            cb_transmission.writeIndex++;
-            // Wrap around if the writeIndex exceeds the buffer size
-            if (cb_transmission.writeIndex == SIZE_OF_BUFFER_TR) {
-                cb_transmission.writeIndex = 0;
+            // if the buffer is full, overwrite the oldest data
+            cb_transmission.bufferLength--;
+            cb_transmission.readIndex++;
+            // Wrap around if the readIndex exceeds the buffer size
+            if(cb_transmission.readIndex == SIZE_OF_BUFFER_TR){
+                cb_transmission.readIndex = 0;
             }
+        }
+        cb_transmission.buffer[cb_transmission.writeIndex] = receivedChar;
+        cb_transmission.bufferLength++;
+        cb_transmission.writeIndex++;
+        // Wrap around if the writeIndex exceeds the buffer size
+        if (cb_transmission.writeIndex == SIZE_OF_BUFFER_TR) {
+            cb_transmission.writeIndex = 0;
         }
     }
 
