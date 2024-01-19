@@ -17,7 +17,7 @@
 #define SIZE_OF_BUFFER_TR 54
 
 #define CLOCKWHISEROTATION 0
-#define CLOCKCOUNTERWHISEROTATION 1
+#define COUNTERCLOCKWHISEROTATION 1
 int rotationState = CLOCKWHISEROTATION;
 
 #define STATE_DOLLAR  (1) // we discard everything until a dollar is found
@@ -365,7 +365,7 @@ void motor_pwm(float y){
             left_pwm2 = 0;
             right_pwm2 = maxVel;
         }
-        else if (rotationState == CLOCKCOUNTERWHISEROTATION){
+        else if (rotationState == COUNTERCLOCKWHISEROTATION){
             sg = 0;  
             yr = 100;  
             left_pwm1 = 0;
@@ -402,7 +402,7 @@ void motor_pwm(float y){
                 left_pwm1 = (int) (left_pwm1 + (yr-50)*minVel/100);
                 right_pwm1 = (int) (right_pwm1 - (yr-50)*minVel/100);
             }
-            else if (rotationState == CLOCKCOUNTERWHISEROTATION){
+            else if (rotationState == COUNTERCLOCKWHISEROTATION){
                 // Create an angolar velocity to turn right
                 // Set the linear velocity to 50% of the before calculated value
                 left_pwm1 = (int) (minVel*0.5);
@@ -565,9 +565,9 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T5Interrupt(){
     // Check if button E8 is already pressed
     if(PORTEbits.RE9 == 0){
         if (rotationState == CLOCKWHISEROTATION){
-            rotationState = CLOCKCOUNTERWHISEROTATION;
+            rotationState = COUNTERCLOCKWHISEROTATION;
         }
-        else if (rotationState == CLOCKCOUNTERWHISEROTATION){
+        else if (rotationState == COUNTERCLOCKWHISEROTATION){
             rotationState = CLOCKWHISEROTATION;
         }
         // stop the timer5
