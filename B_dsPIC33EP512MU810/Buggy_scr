@@ -171,7 +171,7 @@ void ADC_initialization(){
     AD1CSSLbits.CSS14 = 1; // Enable AN14 for scan
     AD1CSSLbits.CSS11 = 1; // Enable AN11 for scan
     AD1CON2bits.SMPI = 1; // Interrupts at the completion of conversion for each sample/convert sequence
-    AD1CON3bits.ADCS = 14; // Select how long is the TAD, 14*Tcy = 3.5us
+    AD1CON3bits.ADCS = 14; // Select how long is the TAD, 14*Tcy = 14 * 1/72MHz = 194ns
     AD1CON1bits.ADON = 1; // Enable the ADC
 }
 
@@ -899,7 +899,6 @@ int main(void){
             IEC1bits.U2RXIE = 1;         // Enable UART2 reception interrupt
         }
         pull(true);  // At each cycle we "clean" the buffer "cb_reception" 
-
         /*
         * Send the data to the UART at different frequencies (10Hz and 1Hz), the flagFrequency is set to 1 in the Timer4 interrupt function every 100ms.
         * So, we send the distance and the duty cycle every 100ms.
