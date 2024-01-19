@@ -500,6 +500,34 @@ void pull(bool bufferSelection) {
     }
 }
 
+void PWM_initialization(){
+    // Configuration for the PWM
+    PTCONbits.PTEN = 1; // Enable the PWM
+    // Set the input clock source for the OCx module
+    // Set the OCx module to operate timer output compare mode
+    OC1CON1bits.OCM = 6; // PWM mode on OC1; Fault pin disabled
+    OC2CON1bits.OCM = 6; 
+    OC3CON1bits.OCM = 6;
+    OC4CON1bits.OCM = 6;
+    // Set the OCx module synchronization source to the peripheral timer
+    OC1CON2bits.SYNCSEL = 0x1F; // Use the peripheral clock (maxVelocityValue) instead of the timer2 (default)
+    OC2CON2bits.SYNCSEL = 0x1F;
+    OC3CON2bits.SYNCSEL = 0x1F;
+    OC4CON2bits.SYNCSEL = 0x1F;
+    // Set pin for the CONTROL of the MOTORS
+    RPOR0bits.RP65R = 0x010; // Set pin RP65 as OC1 (PWM)
+    RPOR1bits.RP66R = 0x011; // Set pin RP66 as OC2 (PWM)
+    RPOR1bits.RP67R = 0x012; // Set pin RP67 as OC3 (PWM)
+    RPOR2bits.RP68R = 0x013; // Set pin RP68 as OC4 (PWM)
+    // Set the PWM frequency from 0 to 10kHz
+    OC1RS = 14400; 
+    OC2RS = 14400; 
+    OC3RS = 14400; 
+    OC4RS = 14400; 
+    stop_motion(); // Stop the motion
+}
+
+
 // INTERRUPT UART
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
     () {
@@ -523,21 +551,78 @@ float threshold_calculation(float y_cm){
 }
 
 void motor_pwm(float y){
+    /*
+    * Function to calculate the duty cycle for the motors based on the distance acquired from the ADC sensor
+    * and the threshold calculated from the empirical data. The duty cycle is calculated as a percentage of the
+    * maximum velocity (14400) and then it is applied to the PWM. The function returns the duty cycle for the motors.
+    * The function also sets the lights based on the distance acquired from the ADC sensor. 
+    * The maximum velocity is set to 60% of the maximum velocity (14400) because we want to have a margin of error.
+    * The maxVelocityValue is set to 14400 because we want to have a period of 10kHz for the PWM.
+    */
+    int maxVelocityValue = 14400;        // 10kHz
+    int maxVel = maxVelocityValue * 0.6; // 60% of the max velocity
+    int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
+    int left_pwm1, right_pwm1, left_pwm2, right_pwm2; // Duty cycle for the motors
     float MIN = threshold_calculation(threshold.minth); // 15cm -> ~0.2
     float MAX = threshold_calculation(threshold.maxth); // 38cm -> ~0.6
+    float sg, yr = 0.0; // Variables to set the lights based on the distance acquired from the ADC sensor
+    // Check if the distance is in the desired range
     if (y < MIN){  // Pure right rotation
-        LATAbits.LATA0 = 1; // Set pin RA1 as HIGH
-        LATGbits.LATG9 = 0; // Set pin RG9 as LOW
+        sg = 0;  
+        yr = 100;  
+        left_pwm1 = maxVel;
+        right_pwm1 = 0;
+        left_pwm2 = 0;
+        right_pwm2 = maxVel;
+       // lights_motion(sg, yr); // Set the lights
     }
     else if (y > MAX){ // Move forward
-        LATAbits.LATA0 = 0; // Set pin RA1 as HIGH
-        LATGbits.LATG9 = 1; // Set pin RG9 as LOW
+        sg = 100;
+        yr = 0;
+        left_pwm1 = maxVel;
+        right_pwm1 = maxVel;
+        left_pwm2 = 0;
+        right_pwm2 = 0;
+        //lights_motion(sg, yr); // Set the lights
     }
     else if (y <= MAX && y >= MIN){ // Turn right
-        LATAbits.LATA0 = 1; // Set pin RA1 as HIGH
-        LATGbits.LATG9 = 1; // Set pin RG9 as LOW
+        sg = (int) (100*(y-MIN)/(MAX-MIN)); 
+        yr = (int) (100*(MAX-y)/(MAX-MIN)); 
+        // Linear velocity decrease and dependant on the distance
+        left_pwm1 = (int) (sg*minVel/100);  
+        right_pwm1 = (int) (sg*minVel/100); 
+        left_pwm2 = 0;
+        right_pwm2 = 0;
+        // Create an angolar velocity to turn right
+        if (yr > 50){
+            // Set the linear velocity to 50% of the before calculated value
+            left_pwm1 = (int) (minVel*0.5);
+            right_pwm1 = (int) (minVel*0.5);
+            // Add the angolar velocity to turn right
+            left_pwm1 = (int) (left_pwm1 + (yr-50)*minVel/100);
+            right_pwm1 = (int) (right_pwm1 - (yr-50)*minVel/100);
+        }
+       // lights_motion(sg, yr); // Set the lights
     }
+    else{ // If there is an error stop the motion
+        stop_motion();
+       // lights_off();
+        return;
+    }
+    // Set the duty cycle for the motors
+    OC2R  = left_pwm1;
+    OC4R  = right_pwm1;
+    OC1R  = left_pwm2;
+    OC3R  = right_pwm2;
     return;
+}
+
+void stop_motion(){
+    // Stop the motion
+    OC2R = 0;
+    OC4R = 0;
+    OC1R = 0;
+    OC3R = 0;
 }
 
 // ADC FUNCTIONS //
@@ -584,7 +669,7 @@ int inverse_threshold_calculation(float threshold){
 
 void send_distance(int* cm_distance){
     // Function to send the distance to the UART
-    int size = 15;
+    int size = 12;
     char message[size];
     sprintf(message, "$MDIST,%d*",*cm_distance);
     char ch = ' ';
@@ -594,11 +679,11 @@ void send_distance(int* cm_distance){
     }
 }
 
-void send_duty_cycle(int* dc1, int* dc2, int* dc3, int* dc4){
+void send_duty_cycle(){
     // Function to send the duty cycle to the UART
-    int size = 23;
+    int size = 25;
     char message[size];
-    sprintf(message, "$MDUTY,%d,%d,%d,%d*", *dc1, *dc2, *dc3, *dc4);
+    sprintf(message, "$MDUTY,%d,%d,%d,%d*", OC1R, OC2R, OC3R, OC4R);
     char ch = ' ';
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
         ch = message[i];
@@ -614,6 +699,7 @@ int main(void){
     bottoms_initialization();   
     ADC_initialization();
     buffers_initialization();
+    PWM_initialization();
 
     
     // UART2 initialization
@@ -680,7 +766,7 @@ int main(void){
             send_distance(&distance_cm);
             hz10 = 0; // Re-set the flag
             */
-            send_duty_cycle(&dc1, &dc2, &dc3, &dc4);           
+            send_duty_cycle();           
             hz10 = 0; // Re-set the flag
             
             if (count % 10 == 0){
