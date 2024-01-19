@@ -639,7 +639,7 @@ float acquisition_ADC(bool flag_mes){
     if (flag_mes == true){
         float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
         float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance
-        float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
+        //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
         return y;
     }
     else if (flag_mes == false){
@@ -649,7 +649,7 @@ float acquisition_ADC(bool flag_mes){
     }
 }
 
-void send_battery_voltage(float* v_battery){
+void send_battery_voltage(){
     // Function to send the battery voltage to the UART
     int size = 13;
     char message[size];
@@ -734,9 +734,7 @@ int main(void){
     ps.index_type = 0; 
     ps.index_payload = 0;
 
-    // Battery voltage initialization:
-    float battery = 0.0;
-    int count, dc1, dc2, dc3, dc4 = 0000;
+    int count = 0;
     
     // Threshold data initialization:
     threshold.minth = 15; 
@@ -771,9 +769,7 @@ int main(void){
             hz10 = 0; // Re-set the flag
             
             if (count % 10 == 0){
-                //battery = acquisition_ADC(false);
-                battery = 2.2;
-                send_battery_voltage(&battery);
+                send_battery_voltage();
                 count = 0;
             }
         }
