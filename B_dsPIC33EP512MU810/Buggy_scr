@@ -15,33 +15,31 @@
 #define STATE_MOTION 1
 #define SIZE_OF_BUFFER_RC 7
 #define SIZE_OF_BUFFER_TR 54
-
-#define CLOCKWHISEROTATION 0
-#define COUNTERCLOCKWHISEROTATION 1
-int rotationState = CLOCKWHISEROTATION;
-
-#define STATE_DOLLAR  (1) // we discard everything until a dollar is found
-#define STATE_TYPE    (2) // we are reading the type of msg until a comma is found
-#define STATE_PAYLOAD (3) // we read the payload until an asterix is found
-#define NEW_MESSAGE (1) // new message received and parsed completely
-#define NO_MESSAGE (0) // no new messages
-
+#define STATE_DOLLAR  (1) 
+#define STATE_TYPE    (2) 
+#define STATE_PAYLOAD (3) 
+#define NEW_MESSAGE (1) 
+#define NO_MESSAGE (0) 
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
 int counterBlink = 0;
 int flagFrequency = 0;
+// we decide to add a possibility to change the rotation of the motors (with the button E9)
+#define CLOCKWISEROTATION 0
+#define COUNTERCLOCKWISEROTATION 1
+int rotationState = CLOCKWISEROTATION;
 
 // CIRCULAR BUFFER
 struct rc_circular_buffer {
-    // Struct that contains only the usefull information that we need from the buffer
-    char buffer[SIZE_OF_BUFFER_RC];                // Buffer
+    // Circular buffer for the reception
+    char buffer[SIZE_OF_BUFFER_RC];               
     int bufferLength;                           // Different from the SIZE_OF_BUFFER_RC, it's 'writeIndex - readIndex', the number of bytes that we still have to read
     int readIndex;
     int writeIndex;
 };
 
 struct tr_circular_buffer {
-    // Struct that contains only the usefull information that we need from the buffer
-    char buffer[SIZE_OF_BUFFER_TR];              // Buffer
+    // Circular buffer for the transmission
+    char buffer[SIZE_OF_BUFFER_TR];              
     int bufferLength;                           // Different from the SIZE_OF_BUFFER_TR, it's 'writeIndex - readIndex', the number of bytes that we still have to read
     int readIndex;
     int writeIndex;
@@ -49,16 +47,14 @@ struct tr_circular_buffer {
 
 typedef struct { 
 	int state;
-	char msg_type[6]; // type is 5 chars + string terminator
-	char msg_payload[100];  // assume payload cannot be longer than 100 chars
+	char msg_type[6]; 
+	char msg_payload[100];  
 	int index_type;
 	int index_payload;
 } parser_state;
 
-int parse_byte(parser_state* ps, char byte);
-
-// Structure definition for the thresholds to be set and considered for PWM.
 struct threshold_data {
+    // Struct to store the threshold for the IR sensor
     int minth;
     int maxth;
 };
@@ -68,24 +64,49 @@ struct rc_circular_buffer cb_reception;
 struct tr_circular_buffer cb_transmission;               
 struct threshold_data threshold;
 
+// FUNCTION PROTOTYPES //
+void bottoms_initialization();
+void leds_initialization();
+void PWM_initialization();
+void ADC_initialization();
+void buffers_initialization();
+void tmr_setup_period(int timer, int ms);
+void tmr_wait_period (int timer);
+void tmr_wait_ms(int timer, int ms);
+void lights_off();
+void lights_motion(float sg, float yr);
+void stop_motion();
+float threshold_calculation(int x_cm);
+int inverse_threshold_calculation(float threshold);
+void motor_pwm(float y);
+float acquisition_ADC();
+void push(char receivedChar, bool bufferSelection);
+void pull(bool bufferSelection);
+int parse_byte(parser_state* ps, char byte);
+int extract_integer(const char* str);
+int next_value(const char* msg, int i);
+void parse_pcth(const char* msg);
+void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt();
+void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt();
+void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt();
+void __attribute__ ((__interrupt__, __auto_psv__)) _T4Interrupt();
+void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt();
+void __attribute__((__interrupt__, __auto_psv__)) _INT2Interrupt();
+void __attribute__ ((__interrupt__, __auto_psv__)) _T5Interrupt();
+
 // INITIALISATIONS FUNCTIONS //
 void bottoms_initialization(){
-    // Pin configuration for the buttons
     RPINR0bits.INT1R = 0x58 ; // Set pin RP24 as INT1 (button E8)
     RPINR1bits.INT2R = 0x59 ; // Set pin RP25 as INT2 (button E9)
     INTCON2bits.GIE = 1; // Enable global interrupt
     INTCON2bits.INT1EP = 1; // Set INT1 interrupt on falling edge
     INTCON2bits.INT2EP = 1; // Set INT2 interrupt on falling edge
-    // Button E8 and E9 configuration
     TRISEbits.TRISE8 = 1; // Set pin RE8 as input
     TRISEbits.TRISE9 = 1; // Set pin RE9 as input   
-    // Buttons Interrupt configuration
     IFS1bits.INT1IF = 0; // Reset INT1 interrupt flag
     IFS1bits.INT2IF = 0; // Reset INT2 interrupt flag
-    // eneable INT1 and INT2 interrupts for E8 and E9 buttons
     IEC1bits.INT1IE = 1; // Enable INT1 interrupt for button E8
     IEC1bits.INT2IE = 1; // Enable INT2 interrupt for button E9
-    // Configuration for timer interrupts for the button E8
     tmr_setup_period(TIMER1, 100); // set the timer to press the button E8 for 100ms and then stop the motion
     IEC0bits.T1IE = 1; // Enable Timer1 (T1IE) interrupt
     tmr_setup_period(TIMER5, 100); // set the timer to press the button E9 for 100ms and then change the rotation
@@ -93,7 +114,6 @@ void bottoms_initialization(){
 }
 
 void leds_initialization(){
-    // Configuration for the leds
     TRISAbits.TRISA0 = 0; // Set pin RA0 as output
     TRISGbits.TRISG9 = 0; // Set pin RG9 as output
     TRISBbits.TRISB8 = 0; // Set pin RB8 as output -> left side lights
@@ -101,20 +121,14 @@ void leds_initialization(){
     TRISFbits.TRISF0 = 0; // Set pin RF0 as output -> breaks lights
     TRISGbits.TRISG1 = 0; // Set pin RG1 as output -> low intensity lights
     TRISAbits.TRISA7 = 0; // Set pin RA7 as output -> beam lights
-    // Set the lights off
     lights_off(); 
 }
 
 void PWM_initialization(){
-    // Configuration for the PWM
-    PTCONbits.PTEN = 1; // Enable the PWM
-    // Set the input clock source for the OCx module
-    // Set the OCx module to operate timer output compare mode
     OC1CON1bits.OCM = 6; // PWM mode on OC1; Fault pin disabled
     OC2CON1bits.OCM = 6; 
     OC3CON1bits.OCM = 6;
     OC4CON1bits.OCM = 6;
-    // Set the OCx module synchronization source to the peripheral timer
     OC1CON2bits.SYNCSEL = 0x1F; // Use the peripheral clock (maxVelocityValue) instead of the timer2 (default)
     OC2CON2bits.SYNCSEL = 0x1F;
     OC3CON2bits.SYNCSEL = 0x1F;
@@ -124,6 +138,7 @@ void PWM_initialization(){
     RPOR1bits.RP66R = 0x011; // Set pin RP66 as OC2 (PWM)
     RPOR1bits.RP67R = 0x012; // Set pin RP67 as OC3 (PWM)
     RPOR2bits.RP68R = 0x013; // Set pin RP68 as OC4 (PWM)
+    PTCONbits.PTEN = 1; // Enable the PWM
     // Set the PWM frequency from 0 to 10kHz
     OC1RS = 14400; 
     OC2RS = 14400; 
@@ -159,7 +174,6 @@ void ADC_initialization(){
 }
 
 void buffers_initialization(){
-    // Function to initialize the circular buffer
     cb_reception.bufferLength = 0;
     cb_reception.readIndex = 0;
     cb_reception.writeIndex = 0;
@@ -169,10 +183,14 @@ void buffers_initialization(){
 }
 
 // TIMER FUNCTIONS //
-void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
-// Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
-// this is too high to be put in a 16 bit register (max 65535) so we have to use a prescaler.
-// The max value of ms which doesn't overflow the register with the highest prescaler (256) is 65535*256/72000000 = 0.23s = 230ms
+void tmr_setup_period(int timer, int ms){ 
+    /*
+    * Function to set the timer period based on the desired ms.
+    * The formula to calculate the period is the following:
+    * Fosc = 144000000 Hz -> Fcy = Fosc / 2 = 72000000 number of clocks in one second so in 0.1 secon there would be 7200000 clocks steps
+    * this is too high to be put in a 16 bit register (max 65535) so we have to use a prescaler.
+    * The max value of ms which doesn't overflow the register with the highest prescaler (256) is 65535*256/72000000 = 0.23s = 230ms
+    */
     double Fcy = FOSC / 2.0;
     double clock_steps = Fcy * (ms/1000.0);
     int count = 0;
@@ -187,7 +205,6 @@ void tmr_setup_period(int timer, int ms){ // Set the prescaler and the PR value
         TMR1 = 0.0; // Reset the timer
         PR1 = clock_steps; // Set the desired count value
         T1CONbits.TCKPS = count; // set PRESCALER
-        //T1CONbits.TCS = 0;
     }
     if (timer == TIMER2){
         TMR2 = 0.0;
@@ -217,7 +234,7 @@ void tmr_wait_period (int timer) {
         // Wait until the flag is high -> The timer finished to count
         }
     }
-    if (timer == TIMER2){ // CONTROLLARE T2
+    if (timer == TIMER2){ 
       while(IFS0bits.T2IF == 0){
         // Wait until the flag is high -> The timer finished to count
         }  
@@ -246,7 +263,7 @@ void tmr_wait_ms(int timer, int ms){
         IFS0bits.T1IF = 0; // Reset the flag
         T1CONbits.TON = 1; // Starts the timer
     }
-    if (timer == TIMER2){ // CONTROLLARE T2
+    if (timer == TIMER2){ 
         IFS0bits.T2IF = 0; // Reset the flag
         T2CONbits.TON = 1; // Starts the timer
     }
@@ -265,7 +282,7 @@ void tmr_wait_ms(int timer, int ms){
     tmr_wait_period(timer);
 }
 
-// LIGHTS FUNCTIONS // COMMENTARE
+// LIGHTS FUNCTIONS 
 void lights_off(){
     LATAbits.LATA0 = 0; 
     LATGbits.LATG9 = 0; 
@@ -277,7 +294,9 @@ void lights_off(){
 }
 
 void lights_motion(float sg, float yr){
-    // Set the lights
+    /*
+    * Set the lights during the motion
+    */
     if(sg >= 50.0){
         LATFbits.LATF0 = 0; 
         LATGbits.LATG1 = 0;
@@ -289,7 +308,7 @@ void lights_motion(float sg, float yr){
     }
 
     if (yr > 15.0){
-        // blink the left side lights at 1Hz
+        // blink the left or the right side lights at 1Hz
         if (counterBlink == 0){
             T3CONbits.TON = 1;
         }
@@ -306,9 +325,10 @@ void lights_motion(float sg, float yr){
 }
 
 // MOTION FUNCTIONS //
-
 void stop_motion(){
-    // Stop the motion
+    /*
+    * Function to stop the motion of the motors
+    */
     OC2R = 0;
     OC4R = 0;
     OC1R = 0;
@@ -356,8 +376,8 @@ void motor_pwm(float y){
     float MAX = threshold_calculation(threshold.maxth); // 38cm -> ~0.6
     float sg, yr = 0.0; // Variables to set the lights based on the distance acquired from the ADC sensor
     // Check if the distance is in the desired range
-    if (y < MIN){  // Pure right rotation
-        if (rotationState == CLOCKWHISEROTATION){
+    if (y < MIN){  
+        if (rotationState == CLOCKWISEROTATION){ // Pure clockwise rotation
             sg = 0;  
             yr = 100;  
             left_pwm1 = maxVel;
@@ -365,7 +385,7 @@ void motor_pwm(float y){
             left_pwm2 = 0;
             right_pwm2 = maxVel;
         }
-        else if (rotationState == COUNTERCLOCKWHISEROTATION){
+        else if (rotationState == COUNTERCLOCKWISEROTATION){ // Pure counter clockwise rotation
             sg = 0;  
             yr = 100;  
             left_pwm1 = 0;
@@ -384,7 +404,7 @@ void motor_pwm(float y){
         right_pwm2 = 0;
         lights_motion(sg, yr); // Set the lights
     }
-    else if (y <= MAX && y >= MIN){ // Turn right
+    else if (y <= MAX && y >= MIN){ 
         sg = (int) (100*(y-MIN)/(MAX-MIN)); 
         yr = (int) (100*(MAX-y)/(MAX-MIN)); 
         // Linear velocity decrease and dependant on the distance
@@ -393,7 +413,7 @@ void motor_pwm(float y){
         left_pwm2 = 0;
         right_pwm2 = 0;
         if (yr > 50){
-            if (rotationState == CLOCKWHISEROTATION){
+            if (rotationState == CLOCKWISEROTATION){ // Turn right
                 // Create an angolar velocity to turn right
                 // Set the linear velocity to 50% of the before calculated value
                 left_pwm1 = (int) (minVel*0.5);
@@ -402,19 +422,19 @@ void motor_pwm(float y){
                 left_pwm1 = (int) (left_pwm1 + (yr-50)*minVel/100);
                 right_pwm1 = (int) (right_pwm1 - (yr-50)*minVel/100);
             }
-            else if (rotationState == COUNTERCLOCKWHISEROTATION){
-                // Create an angolar velocity to turn right
+            else if (rotationState == COUNTERCLOCKWISEROTATION){ // Turn left
+                // Create an angolar velocity to turn left
                 // Set the linear velocity to 50% of the before calculated value
                 left_pwm1 = (int) (minVel*0.5);
                 right_pwm1 = (int) (minVel*0.5);
-                // Add the angolar velocity to turn right
+                // Add the angolar velocity to turn left
                 left_pwm1 = (int) (left_pwm1 - (yr-50)*minVel/100);
                 right_pwm1 = (int) (right_pwm1 + (yr-50)*minVel/100);
             }
         }       
         lights_motion(sg, yr); // Set the lights
     }
-    else{ // If there is an error stop the motion
+    else{ // If there is an error stop the motion and turn off the lights
         stop_motion();
         lights_off();
         return;
@@ -428,23 +448,59 @@ void motor_pwm(float y){
 }
 
 // ADC FUNCTIONS //
-
 float acquisition_ADC(){
     /*
-    * Function to acquire the data from the ADC sensor and calculate the distance and the battery voltage
-    * The ADC is triggered to sample the data and when the conversion is done, the data are stored in the ADC1BUF0 and ADC1BUF1
+    * Function to acquire the data from the ADC sensor and calculate the distance 
+    * The ADC is triggered to sample the data and when the conversion is done, the data are stored in the ADC1BUF1 and ADC1BUF0 registers. (We will use ADC1BUF0 to calculate the battery voltage)  
     */
     do {
-        if (AD1CON1bits.SAMP == 0)
+        if (AD1CON1bits.SAMP == 0)                                  // If the ADC is not sampling
             AD1CON1bits.SAMP = 1;                                   // Start sampling again
     } while (!AD1CON1bits.DONE);                                    // Wait for the conversion to complete
         float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
-        float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance           // Calculate the battery voltage
+        float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance  
         return y;
 }
 
-// INTERRUPT FUNCTIONS //
+// SEND UART FUNCTIONS //
+void send_battery_voltage(){
+    // Function to send the battery voltage to the UART
+    int size = 13;
+    char message[size];
+    float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;
+    sprintf(message, "$MBATT,%.2f*", battery);
+    char ch = ' ';
+    for (int i = 0; i < size && message[i] != '\0'; i++){ 
+        ch = message[i];
+        push(ch, false);
+    }
+}
 
+void send_distance(int* cm_distance){
+    // Function to send the distance to the UART
+    int size = 12;
+    char message[size];
+    sprintf(message, "$MDIST,%d*",*cm_distance);
+    char ch = ' ';
+    for (int i = 0; i < size && message[i] != '\0'; i++){ 
+        ch = message[i];
+        push(ch, false);
+    }
+}
+
+void send_duty_cycle(){
+    // Function to send the duty cycle to the UART
+    int size = 25;
+    char message[size];
+    sprintf(message, "$MDUTY,%d,%d,%d,%d*", OC1R, OC2R, OC3R, OC4R);
+    char ch = ' ';
+    for (int i = 0; i < size && message[i] != '\0'; i++){ 
+        ch = message[i];
+        push(ch, false);
+    }
+}
+
+// INTERRUPT FUNCTIONS //
 void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt(){
     /*
      * Interrupt function for button E8 (INT1): Resets the interrupt flag, 
@@ -452,7 +508,7 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT1Interrupt(){
      * clears Timer1 register, and starts Timer1.
      */ 
     IFS1bits.INT1IF = 0;    // Reset INT1 interrupt flag 
-    IEC1bits.INT1IE = 0;    // Disable INT1 interrupt for button S5
+    IEC1bits.INT1IE = 0;    // Disable INT1 interrupt for button E8
     IEC0bits.T1IE = 1;      // Enable Timer1 (T1IE) interrupt
     IFS0bits.T1IF = 0;      // Reset Timer1 interrupt flag
     TMR1 = 0;               // Clear Timer1 'counter' register
@@ -468,7 +524,7 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T1Interrupt(){
     IFS0bits.T1IF = 0;      // Reset Timer1 interrupt flag 
     IEC0bits.T1IE = 0;      // Disable Timer1 interrupt
     IFS1bits.INT1IF = 0;    // Reset INT1 interrupt flag
-    IEC1bits.INT1IE = 1;    // Enable INT1 interrupt for button S5
+    IEC1bits.INT1IE = 1;    // Enable INT1 interrupt for button E8
 
     // Check if button E8 is already pressed
     if(PORTEbits.RE8 == 0){
@@ -491,7 +547,7 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt(){
     /*
     * Timer3 (T3) interrupt function: Resets the Timer3 interrupt flag,
     * implements the variable 'counterBlink' because we cannot have a timer with a period of 1 second,
-    * so we wait two times the interrupt period (500ms) to have a period of 1 second. 
+    * so we wait five times the interrupt period (200ms) to have a period of 1 second. 
     * After that, we blink the lights at 1Hz.
     */
     IFS0bits.T3IF = 0;      // Reset Timer3 interrupt flag
@@ -507,19 +563,31 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt(){
         return;
     }
     else if (counterBlink == 5 && mainState == STATE_MOTION){
-        // blink the right side lights at 1Hz
-        LATFbits.LATF1 = !LATFbits.LATF1;
-        counterBlink = 0;
+        if (rotationState == CLOCKWISEROTATION){
+            // blink the right side lights at 1Hz
+            LATFbits.LATF1 = !LATFbits.LATF1;
+            counterBlink = 0;
+        }
+        else if (rotationState == COUNTERCLOCKWISEROTATION){
+            // blink the left side lights at 1Hz
+            LATBbits.LATB8 = !LATBbits.LATB8;
+            counterBlink = 0;
+        }
         return;
     }
     T3CONbits.TON = 1; // start the timer
 }
 
 void __attribute__ ((__interrupt__, __auto_psv__)) _T4Interrupt(){
+    /*
+    * Timer4 (T4) interrupt function: Resets the Timer4 interrupt flag,
+    * force the flagFrequency to be 1, and starts the timer.
+    * This timer is used to send the data to the UART every 100ms.
+    */
     IFS1bits.T4IF = 0;      // Reset Timer4 interrupt flag
     TMR4 = 0.0;
     flagFrequency = 1;
-    T4CONbits.TON = 1;      // start the timer
+    T4CONbits.TON = 1;      // start the Timer4
 }
 
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
@@ -533,15 +601,16 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
         IEC1bits.U2RXIE = 0;                      // Disable interrupt for UART2 reception
         char receivedData = U2RXREG;              // Read
         push(receivedData);                       // Push
-        IEC1bits.U2RXIE = 1;                       // Push
+        IEC1bits.U2RXIE = 1;                      // Enable interrupt for UART2 reception
     }    
 }
 
 void __attribute__((__interrupt__, __auto_psv__)) _INT2Interrupt(){
     /*
-     * Interrupt function for button E8 (INT1): Resets the interrupt flag, 
-     * disables INT1 interrupt, enables Timer1 (T1IE) interrupt, resets T1IF flag,
-     * clears Timer1 register, and starts Timer1.
+     * Interrupt function for button E9 (INT2): Resets the interrupt flag, 
+     * disables INT2 interrupt, enables Timer5 (T5IE) interrupt, resets T1IF flag,
+     * clears Timer5 register, and starts Timer5.
+     * This button is used to change the rotation of the motors.
      */ 
     IFS1bits.INT2IF = 0;   
     IEC1bits.INT2IE = 0;    
@@ -553,22 +622,22 @@ void __attribute__((__interrupt__, __auto_psv__)) _INT2Interrupt(){
 
 void __attribute__ ((__interrupt__, __auto_psv__)) _T5Interrupt(){
     /*
-     * Timer1 (T1) interrupt function: Resets the Timer1 interrupt flag,
-     * disables Timer1 interrupt (T1IE), enables INT1 interrupt for button E8,
-     * and checks if button E8 is pressed. If it is pressed, it stops the motion.
+     * Timer5 (T5) interrupt function: Resets the Timer5 interrupt flag,
+     * disables Timer5 interrupt (T5IE), enables INT2 interrupt for button E9,
+     * and checks if button E9 is pressed. If it is pressed, it changes the rotation.
      */ 
     IFS1bits.T5IF = 0;      // Reset Timer1 interrupt flag 
     IEC1bits.T5IE = 0;      // Disable Timer1 interrupt
     IFS1bits.INT2IF = 0;    // Reset INT1 interrupt flag
-    IEC1bits.INT2IE = 1;    // Enable INT1 interrupt for button S5
+    IEC1bits.INT2IE = 1;    // Enable INT1 interrupt for button E9
 
-    // Check if button E8 is already pressed
+    // Check if button E9 is already pressed
     if(PORTEbits.RE9 == 0){
-        if (rotationState == CLOCKWHISEROTATION){
-            rotationState = COUNTERCLOCKWHISEROTATION;
+        if (rotationState == CLOCKWISEROTATION){
+            rotationState = COUNTERCLOCKWISEROTATION;
         }
-        else if (rotationState == COUNTERCLOCKWHISEROTATION){
-            rotationState = CLOCKWHISEROTATION;
+        else if (rotationState == COUNTERCLOCKWISEROTATION){
+            rotationState = CLOCKWISEROTATION;
         }
         // stop the timer5
         T5CONbits.TON = 0; 
@@ -579,9 +648,7 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T5Interrupt(){
     }
 }
 
-// PROFESSOR'S CODE // COMMENTARE
-// We won't delve deeper in the explaination of the functions "parse_byte", "extract_integer",
-// "next_value" and "parse_pcth", because they have been given to us already made.
+// PROFESSOR'S CODE // 
 int parse_byte(parser_state* ps, char byte) {
     switch (ps->state) {
         case STATE_DOLLAR:
@@ -666,7 +733,8 @@ void push(char receivedChar, bool bufferSelection) {
     /*
      * Pushes characters received from UART into the circular buffer.
      * As we have two circular buffers, we have to select which one we want to use with the boolean 'bufferSelection'.
-     * If the buffer is full, we don't push other characters.
+     * If the RECEIVED buffer is full, we don't push the character.
+     * If the TRANSMISSION buffer is full, we overwrite the oldest data.
      */
     if (bufferSelection == true){
         if (cb_reception.bufferLength == SIZE_OF_BUFFER_RC) {
@@ -705,9 +773,10 @@ void push(char receivedChar, bool bufferSelection) {
 
 void pull(bool bufferSelection) {
     /*
-     * Takes out all characters from the circular buffers:
-     * as we have two circular buffers, we have to select which one we want to use with the boolean 'bufferSelection'.
-     * With the 'cb_reception' buffer, we parse the message (with 'parse_byte') and we acquire the payload (with 'parse_pcth') into sdata.minth and maxth.
+     * The RECEIVE buffer takes out all the characters stored in the circular buffer.
+     * The TRANSMISSION buffer takes out only one character at call.
+     * As we have two circular buffers, we have to select which one we want to use with the boolean 'bufferSelection'.
+     * With the 'cb_reception' buffer, we parse the message (with 'parse_byte') and we acquire the payload (with 'parse_pcth') into threshold.minth and maxth.
      * With the 'cb_transmission' buffer, we send the data to the UART.
      */
     if (bufferSelection == true){
@@ -748,47 +817,8 @@ void pull(bool bufferSelection) {
                 cb_transmission.readIndex = 0;
             }
             //IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
-            // If the buffer is not full, send the data
             U2TXREG = receivedChar;
         }
-    }
-}
-
-void send_battery_voltage(){
-    // Function to send the battery voltage to the UART
-    int size = 13;
-    char message[size];
-    float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;
-    sprintf(message, "$MBATT,%.2f*", battery);
-    char ch = ' ';
-
-    for (int i = 0; i < size && message[i] != '\0'; i++){ 
-        ch = message[i];
-        push(ch, false);
-    }
-}
-
-void send_distance(int* cm_distance){
-    // Function to send the distance to the UART
-    int size = 12;
-    char message[size];
-    sprintf(message, "$MDIST,%d*",*cm_distance);
-    char ch = ' ';
-    for (int i = 0; i < size && message[i] != '\0'; i++){ 
-        ch = message[i];
-        push(ch, false);
-    }
-}
-
-void send_duty_cycle(){
-    // Function to send the duty cycle to the UART
-    int size = 25;
-    char message[size];
-    sprintf(message, "$MDUTY,%d,%d,%d,%d*", OC1R, OC2R, OC3R, OC4R);
-    char ch = ' ';
-    for (int i = 0; i < size && message[i] != '\0'; i++){ 
-        ch = message[i];
-        push(ch, false);
     }
 }
 
@@ -801,7 +831,12 @@ int main(void){
     bottoms_initialization();
     PWM_initialization();
     ADC_initialization();  
-    buffers_initialization();  
+    buffers_initialization(); 
+
+    // Parser state initialization:
+    ps.state = STATE_DOLLAR; 
+    ps.index_type = 0; 
+    ps.index_payload = 0; 
     
     // UART2 initialization
     U2MODE = 0; // Clear UART2 mode register
@@ -816,33 +851,33 @@ int main(void){
     RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
     RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
 
-    // set the timer for the main at 1kHz
-    tmr_setup_period(TIMER2, 1); // set the timer to 1ms
-    // set the timer for the blink at 1Hz (200ms x 5 = 1s)
-    tmr_setup_period(TIMER3, 200); // set the timer to 200ms
+    // Set the timer for the main at 1kHz (1ms)
+    tmr_setup_period(TIMER2, 1); 
+    // Set the timer for the blink at 1Hz (200ms x 5 = 1s)
+    tmr_setup_period(TIMER3, 200); 
     IEC0bits.T3IE = 1; // Enable Timer3 (T3IE) interrupt
-    // set timer4 at 10 Hz
-    tmr_setup_period(TIMER4, 100); // set the timer to 100ms
-    IEC1bits.T4IE = 1; // Enable Timer4 (T4IE) interrupt
-    IFS1bits.T4IF = 0;        
-    T4CONbits.TON = 1;
+    // set timer4 at 10 Hz (100ms)
+    tmr_setup_period(TIMER4, 100); 
+    IEC1bits.T4IE = 1;    // Enable Timer4 (T4IE) interrupt
+    IFS1bits.T4IF = 0;    // Reset Timer4 interrupt flag
+    T4CONbits.TON = 1;    // Start Timer4
     
-    // Parser state initialization:
-    ps.state = STATE_DOLLAR; 
-    ps.index_type = 0; 
-    ps.index_payload = 0;
-
+    // Set the count used to send the data to the UART at different frequencies (10Hz and 1Hz)
     int count = 0;
+    // Variable to acquire the distance from the ADC sensor
     float distance = 0.0;
-    
     // Threshold data initialization:
     threshold.minth = 15; 
     threshold.maxth = 38;
     
     while (1)
     {
+        /*
+        * Acquire the distance from the ADC sensor we take it out from the StateSelection because we want to measure the battery voltage and the distance 
+        * even if the buggy is not moving.
+        */
         distance = acquisition_ADC();
-
+        // State selection  
         if (mainState == STATE_WAIT){
             stop_motion();  
             // blink the lights at 1Hz
@@ -861,24 +896,29 @@ int main(void){
             push(receivedData, true);   
             IEC1bits.U2RXIE = 1;         // Enable UART2 reception interrupt
         }
-        pull(true);
+        pull(true);  // At each cycle we "clean" the buffer "cb_reception" 
 
-        // trasmission of the data
+        /*
+        * Send the data to the UART at different frequencies (10Hz and 1Hz), the flagFrequency is set to 1 in the Timer4 interrupt function every 100ms.
+        * So, we send the distance and the duty cycle every 100ms.
+        * We send the battery voltage every 1s, after 10 flagFrequency attivations (by the Timer4 interrupt function).
+        */
         if(flagFrequency == 1){ //10Hz - 100ms Tasks
             count++;
             int distance_cm = inverse_threshold_calculation(distance);
             send_distance(&distance_cm);
             send_duty_cycle();           
             flagFrequency = 0; // Re-set the flag
-            if (count % 10 == 0){
+            if (count % 10 == 0){ //1Hz - 1s Tasks
                 send_battery_voltage();
                 count = 0;
             }
         }
+        // If the UART2 buffer is not full and the TRANSMISSION buffer is not empty, send the data to the UART
         if (U2STAbits.UTXBF == 0 && cb_transmission.bufferLength > 0){
             pull(false);
         }
-
+        // Wait the control loop frequency
         IFS0bits.T2IF = 0;        
         T2CONbits.TON = 1;  
         tmr_wait_period(TIMER2);
