@@ -13,6 +13,19 @@
 #define TIMER5 5
 #define STATE_WAIT 0
 #define STATE_MOTION 1
+/*
+ * SIZE BUFFER DECISION:
+ * We choose a bound rate of 28800bps, which means that we can send approximately 2880 bytes per second.
+ * The control loop must be executed at 1KHz, so the period is 1ms. 
+ * This means that we can send/receive 2.88 bytes per control loop. 
+ * -> RECEIVE BUFFER: 7 bytes 
+ * Our choice is to clear the buffer at each control loop, so we don't need a buffer a lot bigger than 3 bytes, because the maximum number of bytes that we can receive in one control loop is 3.
+ * We decided to set the size of the buffer to 7 bytes because we want to have a margin of error.
+ * -> TRANSMISSION BUFFER: 54 bytes
+ * We have to send 3 messages, each one (at maximum) of 12, 13 and 25 bytes. So we need approximately 17ms (12+13+25)/2.88 = 17.01ms to send all the messages. 
+ * This is possible because the frequency of two of the messages is 10Hz (100ms) and the frequency of the other one is 1Hz (1s).
+ * We decided to set the size of the buffer to 54 bytes because we want to have a margin of error.
+*/
 #define SIZE_OF_BUFFER_RC 7
 #define SIZE_OF_BUFFER_TR 54
 #define STATE_DOLLAR  (1) 
