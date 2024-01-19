@@ -558,17 +558,17 @@ float acquisition_ADC(bool flag_mes){
         return y;
     }
     else if (flag_mes == false){
-        float battery = 2.2;
-        //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
+        //float battery = 2.2;
+        float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
         return battery;
     }
 }
 
-void send_battery_voltage(float v_battery){
+void send_battery_voltage(float* v_battery){
     // Function to send the battery voltage to the UART
     int size = 13;
     char message[size];
-    sprintf(message, "$MBATT,%.2f*", v_battery);
+    sprintf(message, "$MBATT,%.2f*", *v_battery);
     char ch = ' ';
 
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
@@ -594,11 +594,11 @@ void send_distance(int* cm_distance){
     }
 }
 
-void send_duty_cycle(int dc1, int dc2, int dc3, int dc4){
+void send_duty_cycle(int* dc1, int* dc2, int* dc3, int* dc4){
     // Function to send the duty cycle to the UART
-    int size = 30;
+    int size = 23;
     char message[size];
-    sprintf(message, "$MDUTY,%d,%d,%d,%d*", dc1, dc2, dc3, dc4);
+    sprintf(message, "$MDUTY,%d,%d,%d,%d*", *dc1, *dc2, *dc3, *dc4);
     char ch = ' ';
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
         ch = message[i];
@@ -674,20 +674,20 @@ int main(void){
 
         // trasmission of the data
         if(hz10 == 1){ //10Hz - 100ms Tasks
-            //count++;
+            count++;
+            /*
             int distance_cm = inverse_threshold_calculation(distance);
             send_distance(&distance_cm);
             hz10 = 0; // Re-set the flag
-            /*
-            send_duty_cycle(dc1, dc2, dc3, dc4);           
+            */
+            send_duty_cycle(&dc1, &dc2, &dc3, &dc4);           
             hz10 = 0; // Re-set the flag
-
+            
             if (count % 10 == 0){
                 battery = acquisition_ADC(false);
-                send_battery_voltage(battery);
+                send_battery_voltage(&battery);
                 count = 0;
             }
-            */
         }
         if (U2STAbits.UTXBF == 0 && cb_transmission.bufferLength > 0){
             pull(false);
