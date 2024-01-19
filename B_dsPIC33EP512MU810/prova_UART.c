@@ -554,6 +554,7 @@ float acquisition_ADC(bool flag_mes){
     if (flag_mes == true){
         float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
         float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance
+        
         return y;
     }
     else if (flag_mes == false){
@@ -563,11 +564,11 @@ float acquisition_ADC(bool flag_mes){
     }
 }
 
-void send_battery_voltage(float * v_battery){
+void send_battery_voltage(float v_battery){
     // Function to send the battery voltage to the UART
     int size = 13;
     char message[size];
-    sprintf(message, "$MBATT,%.2f*", *v_battery);
+    sprintf(message, "$MBATT,%.2f*", v_battery);
     char ch = ' ';
 
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
@@ -576,11 +577,16 @@ void send_battery_voltage(float * v_battery){
     }
 }
 
-void send_distance(int * cm_distance){
+int inverse_threshold_calculation(float threshold){
+    int y_cm = (int) ((threshold + 0.025)/0.016);
+    return y_cm;
+}
+
+void send_distance(int* cm_distance){
     // Function to send the distance to the UART
-    int size = 11;
+    int size = 15;
     char message[size];
-    sprintf(message, "$MDIST,%d*", *cm_distance);
+    sprintf(message, "$MDIST,%d*",*cm_distance);
     char ch = ' ';
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
         ch = message[i];
@@ -588,11 +594,11 @@ void send_distance(int * cm_distance){
     }
 }
 
-void send_duty_cycle(int * dc1, int * dc2, int * dc3, int * dc4){
+void send_duty_cycle(int dc1, int dc2, int dc3, int dc4){
     // Function to send the duty cycle to the UART
-    int size = 28;
+    int size = 30;
     char message[size];
-    sprintf(message, "$MDUTY,%d,%d,%d,%d*", *dc1, *dc2, *dc3, *dc4);
+    sprintf(message, "$MDUTY,%d,%d,%d,%d*", dc1, dc2, dc3, dc4);
     char ch = ' ';
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
         ch = message[i];
@@ -643,7 +649,7 @@ int main(void){
 
     // Battery voltage initialization:
     float battery = 0.0;
-    int count, dc1, dc2, dc3, dc4 = 0;
+    int count, dc1, dc2, dc3, dc4 = 0000;
     
     // Threshold data initialization:
     threshold.minth = 15; 
@@ -668,17 +674,20 @@ int main(void){
 
         // trasmission of the data
         if(hz10 == 1){ //10Hz - 100ms Tasks
-            count++;
-            
-            send_distance((int)&distance);
-            send_duty_cycle(&dc1, &dc2, &dc3, &dc4);           
+            //count++;
+            int distance_cm = inverse_threshold_calculation(distance);
+            send_distance(&distance_cm);
+            hz10 = 0; // Re-set the flag
+            /*
+            send_duty_cycle(dc1, dc2, dc3, dc4);           
             hz10 = 0; // Re-set the flag
 
             if (count % 10 == 0){
                 battery = acquisition_ADC(false);
-                send_battery_voltage(&battery);
+                send_battery_voltage(battery);
                 count = 0;
             }
+            */
         }
         if (U2STAbits.UTXBF == 0 && cb_transmission.bufferLength > 0){
             pull(false);
