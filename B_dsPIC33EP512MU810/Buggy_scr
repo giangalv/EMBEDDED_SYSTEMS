@@ -2,6 +2,7 @@
 #include "math.h"
 #include "stdio.h"
 #include "stdlib.h"
+#include "stdbool.h"
 
 #define FOSC 144000000.0 //Hz Clock breadboard
 #define REG_SXT_BIT 65535.0 // MAX 16 bit register
@@ -12,8 +13,8 @@
 #define TIMER5 5
 #define STATE_WAIT 0
 #define STATE_MOTION 1
-#define SIZE_OF_BUFFER 7
-#define SIZE_OF_MESSAGE_BUFFER 54
+#define SIZE_OF_BUFFER_RC 7
+#define SIZE_OF_BUFFER_TR 54
 
 #define STATE_DOLLAR  (1) // we discard everything until a dollar is found
 #define STATE_TYPE    (2) // we are reading the type of msg until a comma is found
@@ -23,12 +24,21 @@
 
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
 int counterBlink = 0;
+int flagFrequency = 0;
 
 // CIRCULAR BUFFER
-struct circular_buffer {
+struct rc_circular_buffer {
     // Struct that contains only the usefull information that we need from the buffer
-    char buffer[SIZE_OF_BUFFER];                // Buffer
-    int bufferLength;                           // Different from the SIZE_OF_BUFFER, it's 'writeIndex - readIndex', the number of bytes that we still have to read
+    char buffer[SIZE_OF_BUFFER_RC];                // Buffer
+    int bufferLength;                           // Different from the SIZE_OF_BUFFER_RC, it's 'writeIndex - readIndex', the number of bytes that we still have to read
+    int readIndex;
+    int writeIndex;
+};
+
+struct tr_circular_buffer {
+    // Struct that contains only the usefull information that we need from the buffer
+    char buffer[SIZE_OF_BUFFER_TR];              // Buffer
+    int bufferLength;                           // Different from the SIZE_OF_BUFFER_TR, it's 'writeIndex - readIndex', the number of bytes that we still have to read
     int readIndex;
     int writeIndex;
 };
@@ -50,7 +60,8 @@ struct threshold_data {
 };
 
 volatile parser_state ps;
-struct circular_buffer cb;                      // Our circular buffer
+struct rc_circular_buffer cb_reception; 
+struct tr_circular_buffer cb_transmission;               
 struct threshold_data threshold;
 
 // INITIALISATIONS FUNCTIONS //
@@ -143,9 +154,12 @@ void ADC_initialization(){
 
 void buffers_initialization(){
     // Function to initialize the circular buffer
-    cb.bufferLength = 0;
-    cb.readIndex = 0;
-    cb.writeIndex = 0;
+    cb_reception.bufferLength = 0;
+    cb_reception.readIndex = 0;
+    cb_reception.writeIndex = 0;
+    cb_transmission.bufferLength = 0;
+    cb_transmission.readIndex = 0;
+    cb_transmission.writeIndex = 0;
 }
 
 // TIMER FUNCTIONS //
@@ -369,7 +383,6 @@ void motor_pwm(float y){
     else{ // If there is an error stop the motion
         stop_motion();
         lights_off();
-        //return 0, 0, 0, 0;
         return;
     }
     // Set the duty cycle for the motors
@@ -377,7 +390,6 @@ void motor_pwm(float y){
     OC4R  = right_pwm1;
     OC1R  = left_pwm2;
     OC3R  = right_pwm2;
-    //return left_pwm2, left_pwm1, right_pwm2, right_pwm1;
     return;
 }
 
@@ -392,10 +404,9 @@ float acquisition_ADC(){
         if (AD1CON1bits.SAMP == 0)
             AD1CON1bits.SAMP = 1;                                   // Start sampling again
     } while (!AD1CON1bits.DONE);                                    // Wait for the conversion to complete
-    float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
-    float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance
-    //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
-    return y;
+        float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
+        float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance           // Calculate the battery voltage
+        return y;
 }
 
 // INTERRUPT FUNCTIONS //
@@ -470,6 +481,13 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt(){
     T3CONbits.TON = 1; // start the timer
 }
 
+void __attribute__ ((__interrupt__, __auto_psv__)) _T4Interrupt(){
+    IFS1bits.T4IF = 0;      // Reset Timer4 interrupt flag
+    TMR4 = 0.0;
+    flagFrequency = 1;
+    T4CONbits.TON = 1;      // start the timer
+}
+
 void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
     () {
     /*
@@ -495,7 +513,7 @@ int parse_byte(parser_state* ps, char byte) {
                 ps->state = STATE_TYPE;
                 ps->index_type = 0;
             }
-            break;
+            break; 
         case STATE_TYPE:
             if (byte == ',') {
                 ps->state = STATE_PAYLOAD;
@@ -525,7 +543,7 @@ int parse_byte(parser_state* ps, char byte) {
             } else {
                 ps->msg_payload[ps->index_payload] = byte; // ok!
                 ps->index_payload++; // increment for the next time;
-            }
+            } 
             break;
     }
     return NO_MESSAGE;
@@ -560,76 +578,109 @@ int next_value(const char* msg, int i) {
   return i;
 }
 
-void parse_pcth(const char* msg, volatile threshold_data* threshold){
+void parse_pcth(const char* msg){
   int i = 0;
-  //threshold->minth = extract_integer(msg);
   threshold.minth = extract_integer(msg);
   i = next_value(msg, i);
-  //threshold->maxth = extract_integer(msg + i);
   threshold.maxth = extract_integer(msg + i);
 }
 
 // CIRCULAR BUFFER FUNCTIONS //
-void push(char receivedChar) {
+void push(char receivedChar, bool bufferSelection) {
     /*
-     * Pushes characters received from UART into the circular buffer for writing.
-     * If the circular buffer overflows, characters will be lost.
+     * Pushes characters received from UART into the circular buffer.
+     * As we have two circular buffers, we have to select which one we want to use with the boolean 'bufferSelection'.
+     * If the buffer is full, we don't push other characters.
      */
-    if (cb.bufferLength == SIZE_OF_BUFFER) {
-        // Buffer is full, cannot push more characters
-        return;
-    } 
-    else {
-        // Push the character into the buffer
-        cb.buffer[cb.writeIndex] = receivedChar;
-        cb.bufferLength++;
-        cb.writeIndex++;
-
-        // Wrap around if the writeIndex exceeds the buffer size
-        if (cb.writeIndex == SIZE_OF_BUFFER) {
-            cb.writeIndex = 0;
-        }
-    }
-}
-
-void pull() {
-    /*
-     * Takes out all characters from the circular buffer and sends them to 'printFunctionFirstRow',
-     * which will print them. When the circular buffer is empty, and the UART is not sending characters,
-     * 'convertNumberToString' writes the number of characters printed on the second row of the LCD.
-     */
-    while (cb.bufferLength > 0) {
-        if (cb.bufferLength == 0) {
-            // Buffer is empty
+    if (bufferSelection == true){
+        if (cb_reception.bufferLength == SIZE_OF_BUFFER_RC) {
             return;
         } 
         else {
-            IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
-            char receivedChar = cb.buffer[cb.readIndex];
-            cb.bufferLength--;
-            cb.readIndex++;
-
-            // Wrap around if the readIndex exceeds the buffer size
-            if (cb.readIndex == SIZE_OF_BUFFER) {
-                cb.readIndex = 0;
+            cb_reception.buffer[cb_reception.writeIndex] = receivedChar;
+            cb_reception.bufferLength++;
+            cb_reception.writeIndex++;
+            // Wrap around if the writeIndex exceeds the buffer size
+            if (cb_reception.writeIndex == SIZE_OF_BUFFER_RC) {
+                cb_reception.writeIndex = 0;
             }
-            int message = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
-            IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
+        }
+    }
+    else if (bufferSelection == false){ 
+        if (cb_transmission.bufferLength == SIZE_OF_BUFFER_TR) {
+            return;
+        } 
+        else {
+            cb_transmission.buffer[cb_transmission.writeIndex] = receivedChar;
+            cb_transmission.bufferLength++;
+            cb_transmission.writeIndex++;
+            // Wrap around if the writeIndex exceeds the buffer size
+            if (cb_transmission.writeIndex == SIZE_OF_BUFFER_TR) {
+                cb_transmission.writeIndex = 0;
+            }
+        }
+    }
 
-            if (message == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
-                if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
-                    parse_pcth(ps.msg_payload);
+}
+
+
+void pull(bool bufferSelection) {
+    /*
+     * Takes out all characters from the circular buffers:
+     * as we have two circular buffers, we have to select which one we want to use with the boolean 'bufferSelection'.
+     * With the 'cb_reception' buffer, we parse the message (with 'parse_byte') and we acquire the payload (with 'parse_pcth') into sdata.minth and maxth.
+     * With the 'cb_transmission' buffer, we send the data to the UART.
+     */
+    if (bufferSelection == true){
+        while (cb_reception.bufferLength > 0) {
+            if (cb_reception.bufferLength == 0) {
+                return;
+            } 
+            else {
+                IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
+                char receivedChar = cb_reception.buffer[cb_reception.readIndex];
+                cb_reception.bufferLength--;
+                cb_reception.readIndex++;
+                // Wrap around if the readIndex exceeds the buffer size
+                if (cb_reception.readIndex == SIZE_OF_BUFFER_RC) {
+                    cb_reception.readIndex = 0;
                 }
-            }            
+                int msg_result = parse_byte(&ps, receivedChar); // Parse the byte to get the message type
+                IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
+                if (msg_result == NEW_MESSAGE) { // If we have a new message, we acquire the payload into sdata.minth and maxth
+                    if (ps.msg_type[0] == 'P' && ps.msg_type[1] == 'C' && ps.msg_type[2] == 'T' && ps.msg_type[3] == 'H' && ps.msg_type[4] == '\0'){
+                        parse_pcth(ps.msg_payload);
+                    }
+                }
+            }
+        }
+    }
+    else if (bufferSelection == false){ 
+        if (cb_transmission.bufferLength <= 0) {
+            return;
+        } 
+        else {
+            //IEC1bits.U2RXIE = 0; // Disable UART2 Receiver Interrupt to avoid problems with shared variables  
+            char receivedChar = cb_transmission.buffer[cb_transmission.readIndex];
+            cb_transmission.bufferLength--;
+            cb_transmission.readIndex++;
+            // Wrap around if the readIndex exceeds the buffer size
+            if (cb_transmission.readIndex == SIZE_OF_BUFFER_TR) {
+                cb_transmission.readIndex = 0;
+            }
+            //IEC1bits.U2RXIE = 1; // Enable UART2 Receiver Interrupt
+            // If the buffer is not full, send the data
+            U2TXREG = receivedChar;
         }
     }
 }
 
-void send_battery_voltage(float *v_battery){
+void send_battery_voltage(){
     // Function to send the battery voltage to the UART
     int size = 13;
     char message[size];
-    sprintf(message, "$MBATT,%.2f*", *v_battery);
+    float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;
+    sprintf(message, "$MBATT,%.2f*", battery);
     char ch = ' ';
 
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
@@ -638,11 +689,16 @@ void send_battery_voltage(float *v_battery){
     }
 }
 
-void send_distance(int *cm_distance){
+int inverse_threshold_calculation(float threshold){
+    int y_cm = (int) ((threshold + 0.025)/0.016);
+    return y_cm;
+}
+
+void send_distance(int* cm_distance){
     // Function to send the distance to the UART
-    int size = 11;
+    int size = 12;
     char message[size];
-    sprintf(message, "$MDIST,%d*", *cm_distance);
+    sprintf(message, "$MDIST,%d*",*cm_distance);
     char ch = ' ';
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
         ch = message[i];
@@ -650,11 +706,11 @@ void send_distance(int *cm_distance){
     }
 }
 
-void send_duty_cycle(int *dc1, int *dc2, int *dc3, int *dc4){
+void send_duty_cycle(){
     // Function to send the duty cycle to the UART
-    int size = 28;
+    int size = 25;
     char message[size];
-    sprintf(message, "$MDUTY,%d,%d,%d,%d*", *dc1, *dc2, *dc3, *dc4);
+    sprintf(message, "$MDUTY,%d,%d,%d,%d*", OC1R, OC2R, OC3R, OC4R);
     char ch = ' ';
     for (int i = 0; i < size && message[i] != '\0'; i++){ 
         ch = message[i];
@@ -674,16 +730,15 @@ int main(void){
     buffers_initialization();  
     
     // UART2 initialization
+    U2MODE = 0; // Clear UART2 mode register
+    U2STA = 0; // Clear UART2 status register
+    U2BRG = 157; // 28800 baud rate
     U2MODEbits.UARTEN = 1; // Enable UART2
     U2STAbits.UTXEN = 1; // Enable UART2 transmission
     U2STAbits.URXISEL = 3; // Interrup when the buffer is full
     IEC1bits.U2RXIE = 1; // Enable UART2 interrupt
     U2STAbits.UTXISEL0 = 0; // Interrupt when the buffer is empty
     U2STAbits.UTXISEL1 = 0; // Interrupt when the buffer is empty
-    U2MODE = 0; // Clear UART2 mode register
-    U2STA = 0; // Clear UART2 status register
-    U2BRG = 157; // 28800 baud rate
-    // UART2 TX and RX pins
     RPOR0bits.RP64R = 0x03; // Set pin RP64 as U2TX
     RPINR19bits.U2RXR = 0x4B; // Set pin RP75 as U2RX
 
@@ -692,16 +747,19 @@ int main(void){
     // set the timer for the blink at 1Hz (200ms x 5 = 1s)
     tmr_setup_period(TIMER3, 200); // set the timer to 200ms
     IEC0bits.T3IE = 1; // Enable Timer3 (T3IE) interrupt
-
-    float distance = 0.0;
+    // set timer4 at 10 Hz
+    tmr_setup_period(TIMER4, 100); // set the timer to 100ms
+    IEC1bits.T4IE = 1; // Enable Timer4 (T4IE) interrupt
+    IFS1bits.T4IF = 0;        
+    T4CONbits.TON = 1;
     
     // Parser state initialization:
     ps.state = STATE_DOLLAR; 
     ps.index_type = 0; 
     ps.index_payload = 0;
 
-    float battery = 0.0;
-    int count, hz10, dc1, dc2, dc3, dc4 = 0;
+    int count = 0;
+    float distance = 0.0;
     
     // Threshold data initialization:
     threshold.minth = 15; 
@@ -709,6 +767,8 @@ int main(void){
     
     while (1)
     {
+        distance = acquisition_ADC();
+
         if (mainState == STATE_WAIT){
             stop_motion();  
             // blink the lights at 1Hz
@@ -718,17 +778,32 @@ int main(void){
         }
         else if (mainState == STATE_MOTION){
             // Move the buggy
-            distance = acquisition_ADC();
             motor_pwm(distance);
         }
         // Check if there are characters in UART2 buffer
         if (U2STAbits.URXDA == 1) {   
             IEC1bits.U2RXIE = 0;         // Disable interrupt for UART2 reception
             char receivedData = U2RXREG; // Read from UART2
-            push(receivedData);   
+            push(receivedData, true);   
             IEC1bits.U2RXIE = 1;         // Enable UART2 reception interrupt
         }
-        pull();
+        pull(true);
+
+        // trasmission of the data
+        if(flagFrequency == 1){ //10Hz - 100ms Tasks
+            count++;
+            int distance_cm = inverse_threshold_calculation(distance);
+            send_distance(&distance_cm);
+            send_duty_cycle();           
+            flagFrequency = 0; // Re-set the flag
+            if (count % 10 == 0){
+                send_battery_voltage();
+                count = 0;
+            }
+        }
+        if (U2STAbits.UTXBF == 0 && cb_transmission.bufferLength > 0){
+            pull(false);
+        }
 
         IFS0bits.T2IF = 0;        
         T2CONbits.TON = 1;  

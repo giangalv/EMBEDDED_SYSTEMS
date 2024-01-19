@@ -24,7 +24,8 @@
 
 
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
-int counterBlink, hz10 = 0;
+int counterBlink = 0;
+int flagFrequency = 0;
 
 // CIRCULAR BUFFER
 struct rc_circular_buffer {
@@ -397,7 +398,7 @@ void __attribute__ ((__interrupt__, __auto_psv__)) _T3Interrupt(){
 void __attribute__ ((__interrupt__, __auto_psv__)) _T4Interrupt(){
     IFS1bits.T4IF = 0;      // Reset Timer4 interrupt flag
     TMR4 = 0.0;
-    hz10 = 1;
+    flagFrequency = 1;
     T4CONbits.TON = 1;      // start the timer
 }
 
@@ -627,7 +628,7 @@ void stop_motion(){
 
 // ADC FUNCTIONS //
 
-float acquisition_ADC(bool flag_mes){
+float acquisition_ADC(){
     /*
     * Function to acquire the data from the ADC sensor and calculate the distance and the battery voltage
     * The ADC is triggered to sample the data and when the conversion is done, the data are stored in the ADC1BUF0 and ADC1BUF1
@@ -636,17 +637,9 @@ float acquisition_ADC(bool flag_mes){
         if (AD1CON1bits.SAMP == 0)
             AD1CON1bits.SAMP = 1;                                   // Start sampling again
     } while (!AD1CON1bits.DONE);                                    // Wait for the conversion to complete
-    if (flag_mes == true){
         float V = (float) ADC1BUF1*(3.3 - 0)/1024;                      // Calculate the voltage of the sensor
-        float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance
-        //float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
+        float y = 2.34 - (float) 4.74*V + (float) 4.06*pow(V,2) - (float) 1.60*pow(V,3) + (float) 0.24*pow(V,4);  // Use the formula given in the datasheet to calculate the distance           // Calculate the battery voltage
         return y;
-    }
-    else if (flag_mes == false){
-        //float battery = 2.2;
-        float battery = (float) 3*ADC1BUF0*(3.3 - 0)/1024;             // Calculate the battery voltage
-        return battery;
-    }
 }
 
 void send_battery_voltage(){
@@ -745,7 +738,7 @@ int main(void){
     
     while (1)
     {
-        distance = acquisition_ADC(true);
+        distance = acquisition_ADC();
         motor_pwm(distance);        
 
         // Check if there are characters in UART2 buffer
@@ -758,16 +751,12 @@ int main(void){
         pull(true);
 
         // trasmission of the data
-        if(hz10 == 1){ //10Hz - 100ms Tasks
+        if(flagFrequency == 1){ //10Hz - 100ms Tasks
             count++;
-            /*
             int distance_cm = inverse_threshold_calculation(distance);
             send_distance(&distance_cm);
-            hz10 = 0; // Re-set the flag
-            */
             send_duty_cycle();           
-            hz10 = 0; // Re-set the flag
-            
+            flagFrequency = 0; // Re-set the flag
             if (count % 10 == 0){
                 send_battery_voltage();
                 count = 0;
