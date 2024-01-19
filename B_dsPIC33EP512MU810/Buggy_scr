@@ -602,7 +602,7 @@ void __attribute__((__interrupt__, __auto_psv__)) _U2RXInterrupt
     if(U2STAbits.URXDA == 1){                     // If there are data to be read
         IEC1bits.U2RXIE = 0;                      // Disable interrupt for UART2 reception
         char receivedData = U2RXREG;              // Read
-        push(receivedData);                       // Push
+        push(receivedData, true);                       // Push
         IEC1bits.U2RXIE = 1;                      // Enable interrupt for UART2 reception
     }    
 }
