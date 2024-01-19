@@ -125,25 +125,27 @@ void leds_initialization(){
 }
 
 void PWM_initialization(){
-    OC1CON1bits.OCM = 6; // PWM mode on OC1; Fault pin disabled
-    OC2CON1bits.OCM = 6; 
+    OC1CON1bits.OCM = 6; // PWM Mode Configuration for OC1, OC2, OC3, and OC4
+    OC2CON1bits.OCM = 6;
     OC3CON1bits.OCM = 6;
     OC4CON1bits.OCM = 6;
-    OC1CON2bits.SYNCSEL = 0x1F; // Use the peripheral clock (maxVelocityValue) instead of the timer2 (default)
+    // Synchronization Source Configuration for OC1, OC2, OC3, and OC4: use the peripheral clock
+    OC1CON2bits.SYNCSEL = 0x1F;
     OC2CON2bits.SYNCSEL = 0x1F;
     OC3CON2bits.SYNCSEL = 0x1F;
     OC4CON2bits.SYNCSEL = 0x1F;
-    // Set pin for the CONTROL of the MOTORS
+    // PWM Pin Configuration for OC1, OC2, OC3, and OC4
     RPOR0bits.RP65R = 0x010; // Set pin RP65 as OC1 (PWM)
     RPOR1bits.RP66R = 0x011; // Set pin RP66 as OC2 (PWM)
     RPOR1bits.RP67R = 0x012; // Set pin RP67 as OC3 (PWM)
     RPOR2bits.RP68R = 0x013; // Set pin RP68 as OC4 (PWM)
-    PTCONbits.PTEN = 1; // Enable the PWM
-    // Set the PWM frequency from 0 to 10kHz
-    OC1RS = 14400; 
-    OC2RS = 14400; 
-    OC3RS = 14400; 
-    OC4RS = 14400; 
+    PTCONbits.PTEN = 1; // Enable the PWM module
+    // Set the PWM frequency to 10kHz for OC1, OC2, OC3, and OC4
+    // OCxRS = Fosc / (2 * PWM Frequency * PTMR Prescaler) - 1
+    OC1RS = 7199;
+    OC2RS = 7199;
+    OC3RS = 7199;
+    OC4RS = 7199;
     stop_motion(); // Stop the motion
 }
 
@@ -363,12 +365,12 @@ void motor_pwm(float y){
     /*
     * Function to calculate the duty cycle for the motors based on the distance acquired from the ADC sensor
     * and the threshold calculated from the empirical data. The duty cycle is calculated as a percentage of the
-    * maximum velocity (14400) and then it is applied to the PWM. The function returns the duty cycle for the motors.
+    * maximum velocity (7199) and then it is applied to the PWM. The function returns the duty cycle for the motors.
     * The function also sets the lights based on the distance acquired from the ADC sensor. 
-    * The maximum velocity is set to 60% of the maximum velocity (14400) because we want to have a margin of error.
-    * The maxVelocityValue is set to 14400 because we want to have a period of 10kHz for the PWM.
+    * The maximum velocity is set to 60% of the maximum velocity (7199) because we want to have a margin of error.
+    * The maxVelocityValue is set to 7199 because we want to have a period of 10kHz for the PWM.
     */
-    int maxVelocityValue = 14400;        // 10kHz
+    int maxVelocityValue = 7199;        // 10kHz
     int maxVel = maxVelocityValue * 0.6; // 60% of the max velocity
     int minVel = maxVelocityValue * 0.4; // 40% of the max velocity
     int left_pwm1, right_pwm1, left_pwm2, right_pwm2; // Duty cycle for the motors
