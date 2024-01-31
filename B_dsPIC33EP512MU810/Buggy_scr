@@ -1,3 +1,8 @@
+/*
+ * Final Project - Embedded Systems
+ * Claudio Demaria - s5433737
+ * Gianluca Galvagni - s5521188
+ */
 #include "xc.h"
 #include "math.h"
 #include "stdio.h"
@@ -20,7 +25,8 @@
  * This means that we can send/receive 2.88 bytes per control loop. 
  * -> RECEIVE BUFFER: 7 bytes 
  * Our choice is to clear the buffer at each control loop, so we don't need a buffer a lot bigger than 3 bytes, because the maximum number of bytes that we can receive in one control loop is 3.
- * We decided to set the size of the buffer to 7 bytes because we want to have a margin of error.
+ * We decided to set the size of the buffer to 7 bytes for avoid the possible case in which we received 6 bytes in two control loops without pulling them from the circular buffer (it is possible
+ * because we have the uart interrupt that triggers when the uart buffer is full).
  * -> TRANSMISSION BUFFER: 54 bytes
  * We have to send 3 messages, each one (at maximum) of 12, 13 and 25 bytes. So we need approximately 17ms (12+13+25)/2.88 = 17.01ms to send all the messages. 
  * This is possible because the frequency of two of the messages is 10Hz (100ms) and the frequency of the other one is 1Hz (1s).
@@ -36,7 +42,7 @@
 int mainState = STATE_WAIT; // 0 = wait, 1 = move
 int counterBlink = 0;
 int flagFrequency = 0;
-// we decide to add a possibility to change the rotation of the motors (with the button E9)
+// we decide to add the possibility to change the rotation of the motors (with the button E9)
 #define CLOCKWISEROTATION 0
 #define COUNTERCLOCKWISEROTATION 1
 int rotationState = CLOCKWISEROTATION;
@@ -138,7 +144,8 @@ void leds_initialization(){
 }
 
 void PWM_initialization(){
-    OC1CON1bits.OCM = 6; // PWM Mode Configuration for OC1, OC2, OC3, and OC4
+    // PWM Mode Configuration for OC1, OC2, OC3, and OC4
+    OC1CON1bits.OCM = 6;
     OC2CON1bits.OCM = 6;
     OC3CON1bits.OCM = 6;
     OC4CON1bits.OCM = 6;
